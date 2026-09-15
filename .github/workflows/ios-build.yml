@@ -1,0 +1,44 @@
+name: Build iOS IPA
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build-ipa:
+    runs-on: macos-14
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Select Xcode Version
+        run: sudo xcode-select -switch /Applications/Xcode_15.4.app/Contents/Developer
+
+      - name: Build Archive
+        run: |
+          mkdir -p build
+          xcodebuild -project GaoSiLearning.xcodeproj \
+                     -scheme GaoSiLearning \
+                     -configuration Release \
+                     -sdk iphoneos \
+                     -archivePath $PWD/build/GaoSiLearning.xcarchive \
+                     CODE_SIGN_IDENTITY="" \
+                     CODE_SIGNING_REQUIRED=NO \
+                     CODE_SIGNING_ALLOWED=NO \
+                     archive
+
+      - name: Package IPA
+        run: |
+          mkdir -p build/Payload
+          cp -r build/GaoSiLearning.xcarchive/Products/Applications/GaoSiLearning.app build/Payload/
+          cd build
+          zip -r GaoSiLearning.ipa Payload
+          echo "IPA generated at $(pwd)/GaoSiLearning.ipa"
+          ls -lh GaoSiLearning.ipa
+
+      - name: Upload IPA Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: GaoSiLearning-iOS-IPA
+          path: build/GaoSiLearning.ipa
