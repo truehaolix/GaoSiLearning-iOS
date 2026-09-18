@@ -88,7 +88,8 @@
     [_btnLogin addTarget:self action:@selector(handleLogin) forControlEvents:UIControlEventTouchUpInside];
     [_cardView addSubview:_btnLogin];
 
-    _spinner = [[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleWhite];
+    _spinner = [[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleMedium];
+    _spinner.color = [UIColor whiteColor];
     _spinner.hidesWhenStopped = YES;
     [_btnLogin addSubview:_spinner];
 }
@@ -183,7 +184,7 @@
 
 - (void)registerKeyboardNotifications {
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(keyboardWillShow:) name:UIKeyboardWillShowNotification object:nil];
-    [[NSNotificationCenter defaultCenter] selector:@selector(keyboardWillHide:) name:UIKeyboardWillHideNotification object:nil];
+    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(keyboardWillHide:) name:UIKeyboardWillHideNotification object:nil];
 }
 
 - (void)keyboardWillShow:(NSNotification *)note {

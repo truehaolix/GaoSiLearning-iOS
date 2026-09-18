@@ -105,7 +105,8 @@
     _analysisLatexView = [[GSLaTeXView alloc] initWithFrame:CGRectZero];
     [_analysisCard addSubview:_analysisLatexView];
 
-    _spinner = [[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleGray];
+    _spinner = [[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleMedium];
+    _spinner.color = [UIColor grayColor];
     _spinner.hidesWhenStopped = YES;
     [_scrollView addSubview:_spinner];
 }

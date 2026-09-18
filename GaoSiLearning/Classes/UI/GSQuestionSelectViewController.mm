@@ -75,7 +75,8 @@
     [_btnNext addTarget:self action:@selector(handleNextStep) forControlEvents:UIControlEventTouchUpInside];
     [_bottomBar addSubview:_btnNext];
 
-    _spinner = [[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleWhiteLarge];
+    _spinner = [[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleLarge];
+    _spinner.color = [UIColor whiteColor];
     _spinner.hidesWhenStopped = YES;
     [self.view addSubview:_spinner];
 }
