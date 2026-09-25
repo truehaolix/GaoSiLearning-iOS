@@ -2,6 +2,7 @@
 #import "GSQuestionSelectViewController.h"
 #import "GSSimilarQuestionsViewController.h"
 #import "GSOrganizeViewController.h"
+#import "GSCheckInViewController.h"
 #import "GSOllamaClient.h"
 #import "GSAPIClient.h"
 #import "GSCacheManager.h"
@@ -71,10 +72,26 @@
 - (void)setupNavigationItems {
     UIBarButtonItem *btnSync = [[UIBarButtonItem alloc] initWithTitle:@"同步" style:UIBarButtonItemStylePlain target:self action:@selector(handleManualSync)];
     UIBarButtonItem *btnOrganize = [[UIBarButtonItem alloc] initWithTitle:@"整理" style:UIBarButtonItemStylePlain target:self action:@selector(handleOpenOrganize)];
-    self.navigationItem.rightBarButtonItems = @[btnOrganize, btnSync];
+    UIBarButtonItem *btnCheckIn = [[UIBarButtonItem alloc] initWithTitle:@"打卡" style:UIBarButtonItemStylePlain target:self action:@selector(handleOpenCheckIn)];
+    self.navigationItem.rightBarButtonItems = @[btnOrganize, btnCheckIn, btnSync];
 
     UIBarButtonItem *btnLogout = [[UIBarButtonItem alloc] initWithTitle:@"退出" style:UIBarButtonItemStylePlain target:self action:@selector(handleLogout)];
     self.navigationItem.leftBarButtonItem = btnLogout;
+}
+
+- (void)handleOpenCheckIn {
+    GSCheckInViewController *checkInVC = [[GSCheckInViewController alloc] init];
+    checkInVC.currentGrade = self.filterGrade;
+    NSMutableArray<NSString *> *kps = [NSMutableArray array];
+    for (GSWrongQuestion *q in self.allQuestions) {
+        if (q.knowledgePoint.length > 0 && ![q.knowledgePoint isEqualToString:@"未分类"]) {
+            if (![kps containsObject:q.knowledgePoint]) {
+                [kps addObject:q.knowledgePoint];
+            }
+        }
+    }
+    checkInVC.knowledgePoints = kps;
+    [self.navigationController pushViewController:checkInVC animated:YES];
 }
 
 - (void)handleOpenOrganize {

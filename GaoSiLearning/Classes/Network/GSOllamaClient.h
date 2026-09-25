@@ -23,6 +23,11 @@ typedef void(^GSAiAnalysisCompletion)(GSAiAnalysisResult * _Nullable result, NSS
 - (void)requestKnowledgeClusteringForText:(NSString *)summaryText
                                completion:(void(^)(NSString *report, NSString * _Nullable error))completion;
 
+/// 异步调用 Qwen 27B 大模型根据年级与错题薄弱点生成每日考点打卡内容与通关练习
+- (void)requestCheckInContentForGrade:(NSString *)grade
+                      knowledgePoints:(NSArray<NSString *> *)kps
+                           completion:(void(^)(NSDictionary * _Nullable data, NSString * _Nullable error))completion;
+
 /// 快速本地启发式学科判断 (毫秒级先发显示)
 + (NSString *)detectSubjectLocally:(NSString *)text;
 

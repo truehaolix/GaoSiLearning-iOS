@@ -294,4 +294,154 @@ static NSString * const kModel8B  = @"qwen3:8b";
     }] resume];
 }
 
+- (void)requestCheckInContentForGrade:(NSString *)grade
+                      knowledgePoints:(NSArray<NSString *> *)kps
+                           completion:(void(^)(NSDictionary * _Nullable data, NSString * _Nullable error))completion {
+    NSString *targetKp = nil;
+    for (NSString *kp in kps) {
+        if (kp.length > 0 && ![kp isEqualToString:@"未分类"] && ![kp isEqualToString:@"全部"]) {
+            targetKp = kp;
+            break;
+        }
+    }
+    if (!targetKp) {
+        if ([grade containsString:@"高一"]) targetKp = @"平面向量数量积与坐标运算";
+        else if ([grade containsString:@"高二"]) targetKp = @"导数的几何意义与单调极值";
+        else if ([grade containsString:@"初中"]) targetKp = @"二次函数最值与图像综合性质";
+        else targetKp = @"导数压轴分类讨论与零点存在性";
+    }
+
+    NSString *host = [GSCacheManager sharedManager].ollamaHost;
+    NSURL *url = [NSURL URLWithString:[NSString stringWithFormat:@"%@/api/chat", host]];
+
+    NSString *systemPrompt = [NSString stringWithFormat:
+        @"你是一名全国资深特级教师与教研名师。请根据学生年级【%@】和错题考点【%@】，输出一份每日通关打卡内容。\n"
+        @"必须返回合法的纯JSON对象（不要Markdown代码块，直接返回{...}）：\n"
+        @"{\n"
+        @"  \"knowledgePoint\": \"%@\",\n"
+        @"  \"grade\": \"%@\",\n"
+        @"  \"summary\": \"考点核心本质（100字左右）\",\n"
+        @"  \"keyFormulas\": \"必备核心公式定理（包含数学符号）\",\n"
+        @"  \"commonTraps\": \"典型失分避坑建议（分1. 2. 3.点）\",\n"
+        @"  \"questions\": [\n"
+        @"    {\n"
+        @"      \"title\": \"通关实战 1\",\n"
+        @"      \"stem\": \"典型单选题干\",\n"
+        @"      \"options\": [\"A. ...\", \"B. ...\", \"C. ...\", \"D. ...\"],\n"
+        @"      \"answer\": \"A\",\n"
+        @"      \"explanation\": \"分步破题思路与解析\"\n"
+        @"    },\n"
+        @"    {\n"
+        @"      \"title\": \"通关实战 2\",\n"
+        @"      \"stem\": \"进阶单选题干\",\n"
+        @"      \"options\": [\"A. ...\", \"B. ...\", \"C. ...\", \"D. ...\"],\n"
+        @"      \"answer\": \"B\",\n"
+        @"      \"explanation\": \"分步破题思路与解析\"\n"
+        @"    }\n"
+        @"  ]\n"
+        @"}", grade ?: @"高中", targetKp, targetKp, grade ?: @"高中"];
+
+    NSDictionary *body = @{
+        @"model": kModel27B,
+        @"stream": @NO,
+        @"format": @"json",
+        @"messages": @[
+            @{ @"role": @"system", @"content": systemPrompt },
+            @{ @"role": @"user", @"content": [NSString stringWithFormat:@"请生成【%@】年级的【%@】今日打卡与通关题目", grade ?: @"高中", targetKp] }
+        ]
+    };
+
+    NSMutableURLRequest *req = [NSMutableURLRequest requestWithURL:url];
+    req.HTTPMethod = @"POST";
+    [req setValue:@"application/json" forHTTPHeaderField:@"Content-Type"];
+    req.HTTPBody = [NSJSONSerialization dataWithJSONObject:body options:0 error:nil];
+
+    [[_session dataTaskWithRequest:req completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
+        if (error || !data) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                if (completion) completion([self defaultCheckInDataForGrade:grade kp:targetKp], nil);
+            });
+            return;
+        }
+
+        NSError *jsonErr = nil;
+        NSDictionary *root = [NSJSONSerialization JSONObjectWithData:data options:0 error:&jsonErr];
+        NSString *content = root[@"message"][@"content"];
+        if (content.length > 0) {
+            NSString *jsonStr = content;
+            if ([jsonStr hasPrefix:@"```"]) {
+                NSRange r1 = [jsonStr rangeOfString:@"\n"];
+                NSRange r2 = [jsonStr rangeOfString:@"```" options:NSBackwardsSearch];
+                if (r1.location != NSNotFound && r2.location != NSNotFound && r2.location > r1.location) {
+                    jsonStr = [jsonStr substringWithRange:NSMakeRange(r1.location + 1, r2.location - r1.location - 1)];
+                }
+            }
+            NSData *jsonData = [jsonStr dataUsingEncoding:NSUTF8StringEncoding];
+            NSDictionary *dict = [NSJSONSerialization JSONObjectWithData:jsonData options:0 error:nil];
+            if ([dict isKindOfClass:[NSDictionary class]] && dict[@"summary"] && dict[@"questions"]) {
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    if (completion) completion(dict, nil);
+                });
+                return;
+            }
+        }
+
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (completion) completion([self defaultCheckInDataForGrade:grade kp:targetKp], nil);
+        });
+    }] resume];
+}
+
+- (NSDictionary *)defaultCheckInDataForGrade:(NSString *)grade kp:(NSString *)targetKp {
+    if ([grade containsString:@"高一"] || [targetKp containsString:@"向量"]) {
+        return @{
+            @"knowledgePoint": (targetKp.length > 0 ? targetKp : @"平面向量数量积与坐标运算"),
+            @"grade": grade ?: @"高一",
+            @"summary": @"平面向量数量积兼具大小与方向双重属性，既可通过几何定义 a·b = |a||b|cosθ 计算，也可借助直角坐标系代数化表示 a·b = x1x2 + y1y2 求解。",
+            @"keyFormulas": @"1. 定义式：a · b = |a||b|cosθ\n2. 坐标式：a · b = x1x2 + y1y2\n3. 垂直充要：a ⊥ b ⇔ a · b = 0 ⇔ x1x2 + y1y2 = 0\n4. 模长：|a| = √(x1² + y1²)",
+            @"commonTraps": @"1. 数量积不满足结合律：(a·b)c ≠ a(b·c)；\n2. 忽略夹角 θ ∈ [0, π]，当 a·b > 0 时 θ 为锐角或 0，需排除同向共线；\n3. 向量模平方展开易漏交叉项：|a + b|² = |a|² + 2a·b + |b|²。",
+            @"questions": @[
+                @{
+                    @"title": @"通关实战 1 · 坐标与模长综合",
+                    @"stem": @"已知平面向量 a = (1, 2)，b = (2, -1)，则向量 2a + b 与 a 的数量积 (2a + b) · a 为？",
+                    @"options": @[@"A. 10", @"B. 12", @"C. 8", @"D. 15"],
+                    @"answer": @"A",
+                    @"explanation": @"先算 2a + b：2a = (2, 4)，2a + b = (4, 3)。再算数量积：(2a + b) · a = 4×1 + 3×2 = 10。选 A。"
+                },
+                @{
+                    @"title": @"通关实战 2 · 垂直充要与参数求解",
+                    @"stem": @"已知向量 a = (x, 1)，b = (2, -4)，若 a ⊥ b，则实数 x 的值为？",
+                    @"options": @[@"A. 2", @"B. -2", @"C. 4", @"D. -4"],
+                    @"answer": @"A",
+                    @"explanation": @"两非零向量垂直的充要条件是 a · b = 0。即 2x - 4 = 0，解得 x = 2。选 A。"
+                }
+            ]
+        };
+    } else {
+        return @{
+            @"knowledgePoint": (targetKp.length > 0 ? targetKp : @"导数的几何意义与单调极值"),
+            @"grade": grade ?: @"高二",
+            @"summary": @"导数反映函数的瞬时变化率。切线斜率即导数值 k = f'(x0)；通过一阶导数符号判定原函数的单调性，极值点必为导数为 0 且两侧导数变号的点。",
+            @"keyFormulas": @"1. 切线方程：y - f(x0) = f'(x0)(x - x0)\n2. 单调性判定：在区间上 f'(x) ≥ 0 恒成立则单调递增\n3. 极值判据：若 f'(x0) = 0 且左正右负为极大值点，左负右正为极小值点",
+            @"commonTraps": @"1. 混淆“在某点处的切线”与“过某点的切线”；\n2. 导数等于0只是极值点的必要不充分条件；\n3. 求参数范围时，端点处导数是否可以等于0常遗漏验证。",
+            @"questions": @[
+                @{
+                    @"title": @"通关实战 1 · 切线方程基本功",
+                    @"stem": @"曲线 f(x) = x³ - 2x + 1 在点 (1, 0) 处的切线方程为？",
+                    @"options": @[@"A. y = x - 1", @"B. y = 2x - 2", @"C. y = -x + 1", @"D. y = 3x - 3"],
+                    @"answer": @"A",
+                    @"explanation": @"求导 f'(x) = 3x² - 2。切点横坐标为 1，故斜率 k = f'(1) = 1。点斜式方程 y - 0 = 1 × (x - 1)，即 y = x - 1。选 A。"
+                },
+                @{
+                    @"title": @"通关实战 2 · 极值点与单调性",
+                    @"stem": @"函数 f(x) = x³ - 3x 的极大值点和极大值分别为？",
+                    @"options": @[@"A. 极大值点 x = -1，极大值 2", @"B. 极大值点 x = 1，极大值 -2", @"C. 极大值点 x = 0，极大值 0", @"D. 极大值点 x = -1，极大值 -2"],
+                    @"answer": @"A",
+                    @"explanation": @"求导 f'(x) = 3x² - 3 = 3(x+1)(x-1)。令 f'(x) = 0 得 x = -1, 1。当 x < -1 时导数大于0，在 (-1, 1) 导数小于0，故 x = -1 为极大值点，极大值为 f(-1) = 2。选 A。"
+                }
+            ]
+        };
+    }
+}
+
 @end
