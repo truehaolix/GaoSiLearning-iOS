@@ -335,6 +335,233 @@
     [self presentViewController:alert animated:YES completion:nil];
 }
 
+@interface GSPaperPreviewViewController : UIViewController
+@property (nonatomic, strong) NSArray<GSWrongQuestion *> *questions;
+@property (nonatomic, copy) NSString *fullPaperText;
+@end
+
+@implementation GSPaperPreviewViewController
+
+- (void)viewDidLoad {
+    [super viewDidLoad];
+    self.title = [NSString stringWithFormat:@"📄 试卷预览与导出 (%lu 题)", (unsigned long)self.questions.count];
+    self.view.backgroundColor = [UIColor colorWithRed:0.95 green:0.96 blue:0.98 alpha:1.0];
+
+    UIBarButtonItem *btnClose = [[UIBarButtonItem alloc] initWithTitle:@"关闭" style:UIBarButtonItemStylePlain target:self action:@selector(handleClose)];
+    self.navigationItem.leftBarButtonItem = btnClose;
+
+    UIBarButtonItem *btnCopy = [[UIBarButtonItem alloc] initWithTitle:@"复制" style:UIBarButtonItemStylePlain target:self action:@selector(handleCopy)];
+    UIBarButtonItem *btnShare = [[UIBarButtonItem alloc] initWithTitle:@"分享" style:UIBarButtonItemStylePlain target:self action:@selector(handleShare)];
+    self.navigationItem.rightBarButtonItems = @[btnShare, btnCopy];
+
+    [self setupUI];
+}
+
+- (void)handleClose {
+    [self dismissViewControllerAnimated:YES completion:nil];
+}
+
+- (void)handleCopy {
+    [UIPasteboard generalPasteboard].string = self.fullPaperText;
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"提示" message:@"试卷全文已复制到剪贴板，可粘贴至文档打印" preferredStyle:UIAlertControllerStyleAlert];
+    [alert addAction:[UIAlertAction actionWithTitle:@"好的" style:UIAlertActionStyleDefault handler:nil]];
+    [self presentViewController:alert animated:YES completion:nil];
+}
+
+- (void)handleShare {
+    UIActivityViewController *act = [[UIActivityViewController alloc] initWithActivityItems:@[self.fullPaperText ?: @""] applicationActivities:nil];
+    [self presentViewController:act animated:YES completion:nil];
+}
+
+- (void)setupUI {
+    CGFloat screenW = [UIScreen mainScreen].bounds.size.width;
+    UIScrollView *scrollView = [[UIScrollView alloc] initWithFrame:self.view.bounds];
+    scrollView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    [self.view addSubview:scrollView];
+
+    CGFloat curY = 16.0;
+
+    // 1. 试卷卷头信息卡
+    UIView *headerCard = [[UIView alloc] initWithFrame:CGRectMake(16, curY, screenW - 32, 100)];
+    headerCard.backgroundColor = [UIColor whiteColor];
+    headerCard.layer.cornerRadius = 10.0;
+    headerCard.layer.shadowColor = [UIColor blackColor].CGColor;
+    headerCard.layer.shadowOpacity = 0.05;
+    headerCard.layer.shadowOffset = CGSizeMake(0, 2);
+    headerCard.layer.shadowRadius = 4.0;
+    [scrollView addSubview:headerCard];
+
+    UILabel *lblPaperTitle = [[UILabel alloc] initWithFrame:CGRectMake(12, 14, screenW - 56, 22)];
+    lblPaperTitle.font = [UIFont boldSystemFontOfSize:17];
+    lblPaperTitle.textAlignment = NSTextAlignmentCenter;
+    lblPaperTitle.textColor = [UIColor colorWithRed:0.1 green:0.1 blue:0.1 alpha:1.0];
+    lblPaperTitle.text = @"高斯知衡 · 错题专项巩固强化练习卷";
+    [headerCard addSubview:lblPaperTitle];
+
+    NSDateFormatter *fmt = [[NSDateFormatter alloc] init];
+    fmt.dateFormat = @"yyyy-MM-dd";
+    NSString *dateStr = [fmt stringFromDate:[NSDate date]];
+
+    UILabel *lblSubInfo = [[UILabel alloc] initWithFrame:CGRectMake(12, 42, screenW - 56, 18)];
+    lblSubInfo.font = [UIFont systemFontOfSize:12];
+    lblSubInfo.textAlignment = NSTextAlignmentCenter;
+    lblSubInfo.textColor = [UIColor grayColor];
+    lblSubInfo.text = @"考试时长：60 分钟    满分：100 分    得分：_______";
+    [headerCard addSubview:lblSubInfo];
+
+    UILabel *lblStudent = [[UILabel alloc] initWithFrame:CGRectMake(12, 66, screenW - 56, 18)];
+    lblStudent.font = [UIFont systemFontOfSize:12];
+    lblStudent.textAlignment = NSTextAlignmentCenter;
+    lblStudent.textColor = [UIColor grayColor];
+    lblStudent.text = [NSString stringWithFormat:@"姓名：___________    班级：___________    日期：%@", dateStr];
+    [headerCard addSubview:lblStudent];
+
+    curY += 114.0;
+
+    // 2. 逐题渲染
+    for (NSInteger i = 0; i < self.questions.count; i++) {
+        GSWrongQuestion *q = self.questions[i];
+        NSInteger num = i + 1;
+
+        UIView *qCard = [[UIView alloc] initWithFrame:CGRectMake(16, curY, screenW - 32, 200)];
+        qCard.backgroundColor = [UIColor whiteColor];
+        qCard.layer.cornerRadius = 10.0;
+        qCard.layer.shadowColor = [UIColor blackColor].CGColor;
+        qCard.layer.shadowOpacity = 0.05;
+        qCard.layer.shadowOffset = CGSizeMake(0, 2);
+        qCard.layer.shadowRadius = 4.0;
+        [scrollView addSubview:qCard];
+
+        CGFloat innerY = 12.0;
+
+        // 题号 & 标签
+        UILabel *numBadge = [[UILabel alloc] initWithFrame:CGRectMake(14, innerY, 60, 22)];
+        numBadge.font = [UIFont boldSystemFontOfSize:14];
+        numBadge.textColor = [UIColor colorWithRed:0.1 green:0.1 blue:0.1 alpha:1.0];
+        numBadge.text = [NSString stringWithFormat:@"第 %ld 题", (long)num];
+        [qCard addSubview:numBadge];
+
+        UILabel *subBadge = [[UILabel alloc] initWithFrame:CGRectMake(80, innerY, 48, 22)];
+        subBadge.backgroundColor = [UIColor colorWithRed:0.18 green:0.50 blue:0.93 alpha:0.12];
+        subBadge.textColor = [UIColor colorWithRed:0.18 green:0.50 blue:0.93 alpha:1.0];
+        subBadge.font = [UIFont boldSystemFontOfSize:11];
+        subBadge.textAlignment = NSTextAlignmentCenter;
+        subBadge.layer.cornerRadius = 4.0;
+        subBadge.layer.masksToBounds = YES;
+        subBadge.text = q.subject ?: @"学科";
+        [qCard addSubview:subBadge];
+
+        UILabel *kpBadge = [[UILabel alloc] initWithFrame:CGRectMake(134, innerY, screenW - 32 - 146, 22)];
+        kpBadge.font = [UIFont systemFontOfSize:12];
+        kpBadge.textColor = [UIColor colorWithRed:0.4 green:0.4 blue:0.4 alpha:1.0];
+        kpBadge.text = [NSString stringWithFormat:@"考点：%@", q.knowledgePoint ?: @"综合应用"];
+        [qCard addSubview:kpBadge];
+
+        innerY += 30.0;
+
+        // 题干文字
+        UILabel *stemLbl = [[UILabel alloc] initWithFrame:CGRectMake(14, innerY, screenW - 60, 20)];
+        stemLbl.font = [UIFont systemFontOfSize:14];
+        stemLbl.textColor = [UIColor colorWithRed:0.15 green:0.15 blue:0.15 alpha:1.0];
+        stemLbl.numberOfLines = 0;
+        if (q.questionText.length > 0 && ![q.questionText hasSuffix:@"错题"]) {
+            stemLbl.text = q.questionText;
+        } else if (q.sourceImageUri.length > 0) {
+            stemLbl.text = @"【请根据下方试卷切片原题进行审题作答】";
+        } else {
+            stemLbl.text = [NSString stringWithFormat:@"【%@ · 考点突破：%@】请根据考纲核心题型进行演算推导与解题。", q.subject ?: @"学科", q.knowledgePoint ?: @"核心考点"];
+        }
+        [stemLbl sizeToFit];
+        stemLbl.frame = CGRectMake(14, innerY, screenW - 60, stemLbl.bounds.size.height);
+        [qCard addSubview:stemLbl];
+
+        innerY += stemLbl.bounds.size.height + 10.0;
+
+        // 试卷原题切片图
+        if (q.sourceImageUri.length > 0) {
+            UIImage *img = [[GSCacheManager sharedManager] loadImageFromDisk:q.sourceImageUri];
+            if (img) {
+                CGFloat imgW = screenW - 60;
+                CGFloat imgH = (img.size.width > 0) ? (imgW * img.size.height / img.size.width) : 120.0;
+                if (imgH > 350.0) imgH = 350.0;
+                if (imgH < 80.0) imgH = 80.0;
+
+                UIImageView *iv = [[UIImageView alloc] initWithFrame:CGRectMake(14, innerY, imgW, imgH)];
+                iv.contentMode = UIViewContentModeScaleAspectFit;
+                iv.image = img;
+                iv.layer.cornerRadius = 6.0;
+                iv.layer.masksToBounds = YES;
+                iv.backgroundColor = [UIColor colorWithRed:0.96 green:0.97 blue:0.98 alpha:1.0];
+                [qCard addSubview:iv];
+
+                innerY += imgH + 12.0;
+            }
+        }
+
+        // 解答与作答留白区
+        UIView *ansSpace = [[UIView alloc] initWithFrame:CGRectMake(14, innerY, screenW - 60, 100)];
+        ansSpace.backgroundColor = [UIColor colorWithRed:0.98 green:0.98 blue:0.99 alpha:1.0];
+        ansSpace.layer.cornerRadius = 6.0;
+        ansSpace.layer.borderWidth = 1.0;
+        ansSpace.layer.borderColor = [UIColor colorWithRed:0.85 green:0.88 blue:0.92 alpha:1.0].CGColor;
+        [qCard addSubview:ansSpace];
+
+        UILabel *lblAnsTip = [[UILabel alloc] initWithFrame:CGRectMake(10, 8, 160, 16)];
+        lblAnsTip.font = [UIFont systemFontOfSize:11];
+        lblAnsTip.textColor = [UIColor colorWithRed:0.6 green:0.65 blue:0.7 alpha:1.0];
+        lblAnsTip.text = @"【解答与作答留白区】";
+        [ansSpace addSubview:lblAnsTip];
+
+        innerY += 100.0 + 14.0;
+
+        qCard.frame = CGRectMake(16, curY, screenW - 32, innerY);
+        curY += innerY + 14.0;
+    }
+
+    // 3. 参考答案与解析卡
+    UIView *ansCard = [[UIView alloc] initWithFrame:CGRectMake(16, curY, screenW - 32, 100)];
+    ansCard.backgroundColor = [UIColor whiteColor];
+    ansCard.layer.cornerRadius = 10.0;
+    ansCard.layer.shadowColor = [UIColor blackColor].CGColor;
+    ansCard.layer.shadowOpacity = 0.05;
+    ansCard.layer.shadowOffset = CGSizeMake(0, 2);
+    ansCard.layer.shadowRadius = 4.0;
+    [scrollView addSubview:ansCard];
+
+    UILabel *lblAnsHead = [[UILabel alloc] initWithFrame:CGRectMake(14, 14, screenW - 60, 20)];
+    lblAnsHead.font = [UIFont boldSystemFontOfSize:14];
+    lblAnsHead.textColor = [UIColor colorWithRed:0.15 green:0.39 blue:0.92 alpha:1.0];
+    lblAnsHead.text = @"💡 参考答案与名师解析卡";
+    [ansCard addSubview:lblAnsHead];
+
+    CGFloat ansInnerY = 40.0;
+    for (NSInteger i = 0; i < self.questions.count; i++) {
+        GSWrongQuestion *q = self.questions[i];
+        NSInteger num = i + 1;
+
+        UILabel *itemAns = [[UILabel alloc] initWithFrame:CGRectMake(14, ansInnerY, screenW - 60, 20)];
+        itemAns.font = [UIFont systemFontOfSize:12];
+        itemAns.textColor = [UIColor colorWithRed:0.2 green:0.2 blue:0.2 alpha:1.0];
+        itemAns.numberOfLines = 0;
+        itemAns.text = [NSString stringWithFormat:@"第 %ld 题【核心考点】：%@\n【易错盲区分析】：%@\n【解题关键提示】：严格审清题意，分步规范作答并检验边界条件。",
+                        (long)num,
+                        q.knowledgePoint ?: @"核心概念",
+                        q.mistakeCause ?: @"审题不清 / 计算疏忽"];
+        [itemAns sizeToFit];
+        itemAns.frame = CGRectMake(14, ansInnerY, screenW - 60, itemAns.bounds.size.height);
+        [ansCard addSubview:itemAns];
+
+        ansInnerY += itemAns.bounds.size.height + 12.0;
+    }
+
+    ansCard.frame = CGRectMake(16, curY, screenW - 32, ansInnerY + 8.0);
+    curY += ansCard.bounds.size.height + 24.0;
+
+    scrollView.contentSize = CGSizeMake(screenW, curY);
+}
+
+@end
+
 // 3. 组卷导出
 - (void)handleExportPracticePaper {
     NSMutableArray<GSWrongQuestion *> *chosen = [NSMutableArray array];
@@ -342,6 +569,11 @@
         if ([self.selectedIds containsObject:q.questionId]) {
             [chosen addObject:q];
         }
+    }
+
+    if (chosen.count == 0) {
+        [self showToast:@"请至少勾选一道题目进行组卷"];
+        return;
     }
 
     NSDateFormatter *fmt = [[NSDateFormatter alloc] init];
@@ -365,7 +597,8 @@
         GSWrongQuestion *q = chosen[i];
         NSInteger num = i + 1;
         [paper appendFormat:@"第 %ld 题（%@ · 考点：%@）\n", (long)num, q.subject ?: @"学科", q.knowledgePoint ?: @"综合应用"];
-        [paper appendFormat:@"%@\n\n", q.questionText.length > 0 ? q.questionText : @"【详见试卷原题切片】"];
+        NSString *stem = (q.questionText.length > 0 && ![q.questionText hasSuffix:@"错题"]) ? q.questionText : @"【详见试卷原题切片】";
+        [paper appendFormat:@"%@\n\n", stem];
         [paper appendString:@"【解答与作答留白区】：\n\n\n\n\n"];
         [paper appendString:@"----------------------------------------------------\n"];
 
@@ -376,22 +609,13 @@
 
     NSString *fullText = [NSString stringWithFormat:@"%@%@", paper, answers];
 
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:[NSString stringWithFormat:@"📄 组卷预览 (%lu 题)", (unsigned long)chosen.count]
-                                                                   message:fullText
-                                                            preferredStyle:UIAlertControllerStyleAlert];
+    GSPaperPreviewViewController *previewVC = [[GSPaperPreviewViewController alloc] init];
+    previewVC.questions = chosen;
+    previewVC.fullPaperText = fullText;
 
-    [alert addAction:[UIAlertAction actionWithTitle:@"复制试卷全文" style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
-        [UIPasteboard generalPasteboard].string = fullText;
-        [self showToast:@"试卷全文已复制到剪贴板，可粘贴至文档打印"];
-    }]];
-
-    [alert addAction:[UIAlertAction actionWithTitle:@"分享" style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
-        UIActivityViewController *act = [[UIActivityViewController alloc] initWithActivityItems:@[fullText] applicationActivities:nil];
-        [self presentViewController:act animated:YES completion:nil];
-    }]];
-
-    [alert addAction:[UIAlertAction actionWithTitle:@"关闭" style:UIAlertActionStyleCancel handler:nil]];
-    [self presentViewController:alert animated:YES completion:nil];
+    UINavigationController *nav = [[UINavigationController alloc] initWithRootViewController:previewVC];
+    nav.modalPresentationStyle = UIModalPresentationFullScreen;
+    [self presentViewController:nav animated:YES completion:nil];
 }
 
 // 4. 批量删除
