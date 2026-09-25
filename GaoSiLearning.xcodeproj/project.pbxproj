@@ -24,6 +24,7 @@
 		AA01000F2C00000100000001 /* GSQuestionSelectViewController.mm in Sources */ = {isa = PBXBuildFile; fileRef = BB01000F2C00000100000001 /* GSQuestionSelectViewController.mm */; };
 		AA0100102C00000100000001 /* GSRecordDialogViewController.mm in Sources */ = {isa = PBXBuildFile; fileRef = BB0100102C00000100000001 /* GSRecordDialogViewController.mm */; };
 		AA0100112C00000100000001 /* GSSimilarQuestionsViewController.mm in Sources */ = {isa = PBXBuildFile; fileRef = BB0100112C00000100000001 /* GSSimilarQuestionsViewController.mm */; };
+		AA0100182C00000100000001 /* GSOrganizeViewController.mm in Sources */ = {isa = PBXBuildFile; fileRef = BB0100182C00000100000001 /* GSOrganizeViewController.mm */; };
 		AA0100122C00000100000001 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = BB0100122C00000100000001 /* Assets.xcassets */; };
 		AA0100132C00000100000001 /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = BB0100132C00000100000001 /* LaunchScreen.storyboard */; };
 		AA0100142C00000100000001 /* WebKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = BB0100142C00000100000001 /* WebKit.framework */; };
@@ -65,6 +66,8 @@
 		BB0100102C00000100000002 /* GSRecordDialogViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = GSRecordDialogViewController.h; sourceTree = "<group>"; };
 		BB0100112C00000100000001 /* GSSimilarQuestionsViewController.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = GSSimilarQuestionsViewController.mm; sourceTree = "<group>"; };
 		BB0100112C00000100000002 /* GSSimilarQuestionsViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = GSSimilarQuestionsViewController.h; sourceTree = "<group>"; };
+		BB0100182C00000100000001 /* GSOrganizeViewController.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = GSOrganizeViewController.mm; sourceTree = "<group>"; };
+		BB0100182C00000100000002 /* GSOrganizeViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = GSOrganizeViewController.h; sourceTree = "<group>"; };
 		BB0100122C00000100000001 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		BB0100132C00000100000001 /* LaunchScreen.storyboard */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; path = LaunchScreen.storyboard; sourceTree = "<group>"; };
 		BB0100142C00000100000001 /* WebKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WebKit.framework; path = System/Library/Frameworks/WebKit.framework; sourceTree = SDKROOT; };
@@ -175,6 +178,8 @@
 				BB0100102C00000100000001 /* GSRecordDialogViewController.mm */,
 				BB0100112C00000100000002 /* GSSimilarQuestionsViewController.h */,
 				BB0100112C00000100000001 /* GSSimilarQuestionsViewController.mm */,
+				BB0100182C00000100000002 /* GSOrganizeViewController.h */,
+				BB0100182C00000100000001 /* GSOrganizeViewController.mm */,
 			);
 			path = Classes/UI;
 			sourceTree = "<group>";
@@ -282,6 +287,7 @@
 				AA01000F2C00000100000001 /* GSQuestionSelectViewController.mm in Sources */,
 				AA0100102C00000100000001 /* GSRecordDialogViewController.mm in Sources */,
 				AA0100112C00000100000001 /* GSSimilarQuestionsViewController.mm in Sources */,
+				AA0100182C00000100000001 /* GSOrganizeViewController.mm in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

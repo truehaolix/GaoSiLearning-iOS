@@ -1,6 +1,7 @@
 #import "GSWrongBookViewController.h"
 #import "GSQuestionSelectViewController.h"
 #import "GSSimilarQuestionsViewController.h"
+#import "GSOrganizeViewController.h"
 #import "GSOllamaClient.h"
 #import "GSAPIClient.h"
 #import "GSCacheManager.h"
@@ -10,6 +11,7 @@
 @interface GSWrongBookViewController () <UITableViewDelegate, UITableViewDataSource, UISearchBarDelegate, UIImagePickerControllerDelegate, UINavigationControllerDelegate>
 @property (nonatomic, strong) UISearchBar *searchBar;
 @property (nonatomic, strong) UIScrollView *subjectScrollView;
+@property (nonatomic, strong) UIScrollView *filterScrollView;
 @property (nonatomic, strong) UIView *statsHeaderView;
 @property (nonatomic, strong) UITableView *tableView;
 @property (nonatomic, strong) UIButton *btnCapture;
@@ -17,6 +19,19 @@
 @property (nonatomic, strong) NSArray<NSString *> *subjects;
 @property (nonatomic, copy) NSString *selectedSubject;
 @property (nonatomic, strong) NSMutableArray<UIButton *> *subjectButtons;
+
+// 4 大筛选维度
+@property (nonatomic, copy) NSString *filterTime;
+@property (nonatomic, copy) NSString *filterSource;
+@property (nonatomic, copy) NSString *filterGrade;
+@property (nonatomic, copy) NSString *filterMastery;
+@property (nonatomic, copy) NSString *filterCause;
+@property (nonatomic, copy) NSString *filterType;
+
+@property (nonatomic, strong) UIButton *btnFilterTime;
+@property (nonatomic, strong) UIButton *btnFilterSource;
+@property (nonatomic, strong) UIButton *btnFilterGrade;
+@property (nonatomic, strong) UIButton *btnFilterMore;
 
 @property (nonatomic, strong) NSArray<GSWrongQuestion *> *allQuestions;
 @property (nonatomic, strong) NSArray<GSWrongQuestion *> *filteredQuestions;
@@ -32,6 +47,14 @@
     _subjects = @[@"全部", @"数学", @"物理", @"化学", @"语文", @"英语", @"生物", @"历史", @"地理", @"政治"];
     _selectedSubject = @"全部";
     _subjectButtons = [NSMutableArray array];
+
+    _filterTime = @"全部";
+    _filterSource = @"全部";
+    _filterGrade = @"全部";
+    _filterMastery = @"全部";
+    _filterCause = @"全部";
+    _filterType = @"全部";
+
     _allQuestions = @[];
     _filteredQuestions = @[];
 
@@ -47,10 +70,16 @@
 
 - (void)setupNavigationItems {
     UIBarButtonItem *btnSync = [[UIBarButtonItem alloc] initWithTitle:@"同步" style:UIBarButtonItemStylePlain target:self action:@selector(handleManualSync)];
-    self.navigationItem.rightBarButtonItem = btnSync;
+    UIBarButtonItem *btnOrganize = [[UIBarButtonItem alloc] initWithTitle:@"整理" style:UIBarButtonItemStylePlain target:self action:@selector(handleOpenOrganize)];
+    self.navigationItem.rightBarButtonItems = @[btnOrganize, btnSync];
 
     UIBarButtonItem *btnLogout = [[UIBarButtonItem alloc] initWithTitle:@"退出" style:UIBarButtonItemStylePlain target:self action:@selector(handleLogout)];
     self.navigationItem.leftBarButtonItem = btnLogout;
+}
+
+- (void)handleOpenOrganize {
+    GSOrganizeViewController *orgVC = [[GSOrganizeViewController alloc] init];
+    [self.navigationController pushViewController:orgVC animated:YES];
 }
 
 - (void)setupUI {
@@ -86,12 +115,28 @@
     _subjectScrollView.contentSize = CGSizeMake(x + 12, 46);
     [self updateSubjectButtonsStyle];
 
-    // 3. 统计状态栏
+    // 3. 时间 / 来源 / 年级 / 更多 筛选栏
+    _filterScrollView = [[UIScrollView alloc] initWithFrame:CGRectZero];
+    _filterScrollView.showsHorizontalScrollIndicator = NO;
+    _filterScrollView.backgroundColor = [UIColor whiteColor];
+    [self.view addSubview:_filterScrollView];
+
+    _btnFilterTime = [self createFilterChipWithTitle:@"时间 ▾" action:@selector(handleTimeFilterTap)];
+    _btnFilterSource = [self createFilterChipWithTitle:@"来源 ▾" action:@selector(handleSourceFilterTap)];
+    _btnFilterGrade = [self createFilterChipWithTitle:@"年级 ▾" action:@selector(handleGradeFilterTap)];
+    _btnFilterMore = [self createFilterChipWithTitle:@"更多 ▾" action:@selector(handleMoreFilterTap)];
+
+    [_filterScrollView addSubview:_btnFilterTime];
+    [_filterScrollView addSubview:_btnFilterSource];
+    [_filterScrollView addSubview:_btnFilterGrade];
+    [_filterScrollView addSubview:_btnFilterMore];
+
+    // 4. 统计状态栏
     _statsHeaderView = [[UIView alloc] initWithFrame:CGRectZero];
     _statsHeaderView.backgroundColor = [UIColor colorWithRed:0.93 green:0.95 blue:0.98 alpha:1.0];
     [self.view addSubview:_statsHeaderView];
 
-    // 4. 错题列表 TableView
+    // 5. 错题列表 TableView
     _tableView = [[UITableView alloc] initWithFrame:CGRectZero style:UITableViewStylePlain];
     _tableView.delegate = self;
     _tableView.dataSource = self;
@@ -105,7 +150,7 @@
 
     [self.view addSubview:_tableView];
 
-    // 5. 底部全宽主操作按钮: 拍照 / 选取试卷录错题
+    // 6. 底部全宽主操作按钮: 拍照 / 选取试卷录错题
     _btnCapture = [UIButton buttonWithType:UIButtonTypeCustom];
     _btnCapture.backgroundColor = [UIColor colorWithRed:0.12 green:0.53 blue:0.90 alpha:1.0];
     [_btnCapture setTitle:@"📷 拍照 / 选取试卷录错题" forState:UIControlStateNormal];
@@ -120,6 +165,20 @@
     [self.view addSubview:_btnCapture];
 }
 
+- (UIButton *)createFilterChipWithTitle:(NSString *)title action:(SEL)sel {
+    UIButton *b = [UIButton buttonWithType:UIButtonTypeCustom];
+    [b setTitle:title forState:UIControlStateNormal];
+    b.titleLabel.font = [UIFont systemFontOfSize:12 weight:UIFontWeightMedium];
+    b.layer.cornerRadius = 14.0;
+    b.layer.borderWidth = 1.0;
+    b.layer.borderColor = [UIColor colorWithRed:0.88 green:0.90 blue:0.92 alpha:1.0].CGColor;
+    b.backgroundColor = [UIColor whiteColor];
+    [b setTitleColor:[UIColor colorWithRed:0.30 green:0.35 blue:0.40 alpha:1.0] forState:UIControlStateNormal];
+    b.contentEdgeInsets = UIEdgeInsetsMake(4, 12, 4, 12);
+    [b addTarget:self action:sel forControlEvents:UIControlEventTouchUpInside];
+    return b;
+}
+
 - (void)viewDidLayoutSubviews {
     [super viewDidLayoutSubviews];
     CGFloat w = self.view.bounds.size.width;
@@ -128,14 +187,25 @@
     CGFloat bottom = self.view.safeAreaInsets.bottom;
 
     _searchBar.frame = CGRectMake(0, top, w, 44);
-    _subjectScrollView.frame = CGRectMake(0, top + 44, w, 46);
-    _statsHeaderView.frame = CGRectMake(0, top + 90, w, 36);
+    _subjectScrollView.frame = CGRectMake(0, top + 44, w, 44);
+
+    _filterScrollView.frame = CGRectMake(0, top + 88, w, 38);
+    CGFloat fx = 12.0;
+    NSArray *chips = @[_btnFilterTime, _btnFilterSource, _btnFilterGrade, _btnFilterMore];
+    for (UIButton *b in chips) {
+        [b sizeToFit];
+        b.frame = CGRectMake(fx, 4, b.bounds.size.width + 10, 28);
+        fx += b.bounds.size.width + 18;
+    }
+    _filterScrollView.contentSize = CGSizeMake(fx + 12, 38);
+
+    _statsHeaderView.frame = CGRectMake(0, top + 126, w, 34);
 
     CGFloat btnH = 50.0;
     CGFloat btnY = h - bottom - btnH - 10;
     _btnCapture.frame = CGRectMake(16, btnY, w - 32, btnH);
 
-    _tableView.frame = CGRectMake(0, top + 126, w, btnY - (top + 126) - 6);
+    _tableView.frame = CGRectMake(0, top + 160, w, btnY - (top + 160) - 6);
 }
 
 - (void)updateSubjectButtonsStyle {
@@ -173,22 +243,181 @@
     }];
 }
 
+// ── 4 大筛选弹窗交互 ─────────────────────────────────────────────────────────
+
+- (void)handleTimeFilterTap {
+    UIAlertController *sheet = [UIAlertController alertControllerWithTitle:@"按时间筛选与排序" message:nil preferredStyle:UIAlertControllerStyleActionSheet];
+    NSArray *opts = @[@"全部时间", @"今天", @"近7天", @"近30天", @"近3个月", @"最早录入优先", @"最新录入优先"];
+    for (NSString *opt in opts) {
+        [sheet addAction:[UIAlertAction actionWithTitle:opt style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
+            self.filterTime = [opt isEqualToString:@"全部时间"] ? @"全部" : opt;
+            [self updateFilterChipsUi];
+            [self applyFilter];
+        }]];
+    }
+    [sheet addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
+    [self presentViewController:sheet animated:YES completion:nil];
+}
+
+- (void)handleSourceFilterTap {
+    UIAlertController *sheet = [UIAlertController alertControllerWithTitle:@"按录入来源筛选" message:nil preferredStyle:UIAlertControllerStyleActionSheet];
+    NSArray *opts = @[@"全部来源", @"平时作业", @"随堂练习", @"单元测验", @"月考周考", @"期中期末", @"模考真题", @"拍照录入"];
+    for (NSString *opt in opts) {
+        [sheet addAction:[UIAlertAction actionWithTitle:opt style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
+            self.filterSource = [opt isEqualToString:@"全部来源"] ? @"全部" : opt;
+            [self updateFilterChipsUi];
+            [self applyFilter];
+        }]];
+    }
+    [sheet addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
+    [self presentViewController:sheet animated:YES completion:nil];
+}
+
+- (void)handleGradeFilterTap {
+    UIAlertController *sheet = [UIAlertController alertControllerWithTitle:@"按学段年级筛选" message:nil preferredStyle:UIAlertControllerStyleActionSheet];
+    NSArray *opts = @[@"全部年级", @"高一", @"高二", @"高三", @"初中", @"小学"];
+    for (NSString *opt in opts) {
+        [sheet addAction:[UIAlertAction actionWithTitle:opt style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
+            self.filterGrade = [opt isEqualToString:@"全部年级"] ? @"全部" : opt;
+            [self updateFilterChipsUi];
+            [self applyFilter];
+        }]];
+    }
+    [sheet addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
+    [self presentViewController:sheet animated:YES completion:nil];
+}
+
+- (void)handleMoreFilterTap {
+    UIAlertController *sheet = [UIAlertController alertControllerWithTitle:@"更多综合筛选" message:@"选择掌握状态或重置所有条件" preferredStyle:UIAlertControllerStyleActionSheet];
+
+    [sheet addAction:[UIAlertAction actionWithTitle:@"仅看待复习错题" style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
+        self.filterMastery = @"待复习";
+        [self updateFilterChipsUi];
+        [self applyFilter];
+    }]];
+
+    [sheet addAction:[UIAlertAction actionWithTitle:@"仅看已掌握错题" style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
+        self.filterMastery = @"已掌握";
+        [self updateFilterChipsUi];
+        [self applyFilter];
+    }]];
+
+    [sheet addAction:[UIAlertAction actionWithTitle:@"仅看计算失误" style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
+        self.filterCause = @"计算";
+        [self updateFilterChipsUi];
+        [self applyFilter];
+    }]];
+
+    [sheet addAction:[UIAlertAction actionWithTitle:@"仅看概念模糊 / 思维盲区" style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
+        self.filterCause = @"概念";
+        [self updateFilterChipsUi];
+        [self applyFilter];
+    }]];
+
+    [sheet addAction:[UIAlertAction actionWithTitle:@"重置所有筛选" style:UIAlertActionStyleDestructive handler:^(UIAlertAction * _Nonnull action) {
+        self.filterTime = @"全部";
+        self.filterSource = @"全部";
+        self.filterGrade = @"全部";
+        self.filterMastery = @"全部";
+        self.filterCause = @"全部";
+        self.filterType = @"全部";
+        [self updateFilterChipsUi];
+        [self applyFilter];
+    }]];
+
+    [sheet addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
+    [self presentViewController:sheet animated:YES completion:nil];
+}
+
+- (void)updateFilterChipsUi {
+    BOOL timeActive = ![self.filterTime isEqualToString:@"全部"];
+    [_btnFilterTime setTitle:timeActive ? [NSString stringWithFormat:@"%@ ▾", self.filterTime] : @"时间 ▾" forState:UIControlStateNormal];
+    [self styleChip:_btnFilterTime active:timeActive];
+
+    BOOL srcActive = ![self.filterSource isEqualToString:@"全部"];
+    [_btnFilterSource setTitle:srcActive ? [NSString stringWithFormat:@"%@ ▾", self.filterSource] : @"来源 ▾" forState:UIControlStateNormal];
+    [self styleChip:_btnFilterSource active:srcActive];
+
+    BOOL gradeActive = ![self.filterGrade isEqualToString:@"全部"];
+    [_btnFilterGrade setTitle:gradeActive ? [NSString stringWithFormat:@"%@ ▾", self.filterGrade] : @"年级 ▾" forState:UIControlStateNormal];
+    [self styleChip:_btnFilterGrade active:gradeActive];
+
+    BOOL moreActive = (![self.filterMastery isEqualToString:@"全部"] || ![self.filterCause isEqualToString:@"全部"]);
+    [_btnFilterMore setTitle:moreActive ? @"更多(已筛) ▾" : @"更多 ▾" forState:UIControlStateNormal];
+    [self styleChip:_btnFilterMore active:moreActive];
+
+    [self.view setNeedsLayout];
+}
+
+- (void)styleChip:(UIButton *)chip active:(BOOL)active {
+    if (active) {
+        chip.backgroundColor = [UIColor colorWithRed:0.92 green:0.95 blue:1.0 alpha:1.0];
+        chip.layer.borderColor = [UIColor colorWithRed:0.12 green:0.53 blue:0.90 alpha:1.0].CGColor;
+        [chip setTitleColor:[UIColor colorWithRed:0.12 green:0.53 blue:0.90 alpha:1.0] forState:UIControlStateNormal];
+        chip.titleLabel.font = [UIFont systemFontOfSize:12 weight:UIFontWeightBold];
+    } else {
+        chip.backgroundColor = [UIColor whiteColor];
+        chip.layer.borderColor = [UIColor colorWithRed:0.88 green:0.90 blue:0.92 alpha:1.0].CGColor;
+        [chip setTitleColor:[UIColor colorWithRed:0.30 green:0.35 blue:0.40 alpha:1.0] forState:UIControlStateNormal];
+        chip.titleLabel.font = [UIFont systemFontOfSize:12 weight:UIFontWeightMedium];
+    }
+}
+
 - (void)applyFilter {
     NSString *keyword = [_searchBar.text stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
     NSMutableArray<GSWrongQuestion *> *res = [NSMutableArray array];
 
     for (GSWrongQuestion *q in self.allQuestions) {
+        // 1. 学科
         BOOL subjectMatch = [_selectedSubject isEqualToString:@"全部"] || [q.subject isEqualToString:_selectedSubject];
+
+        // 2. 搜索关键字
         BOOL kwMatch = YES;
         if (keyword.length > 0) {
             kwMatch = ([q.questionText containsString:keyword] ||
                        [q.knowledgePoint containsString:keyword] ||
                        [q.mistakeCause containsString:keyword]);
         }
-        if (subjectMatch && kwMatch) {
+
+        // 3. 来源
+        BOOL srcMatch = YES;
+        if (![_filterSource isEqualToString:@"全部"]) {
+            srcMatch = [q.mistakeCause containsString:_filterSource] || [q.knowledgePoint containsString:_filterSource];
+        }
+
+        // 4. 年级
+        BOOL gradeMatch = YES;
+        if (![_filterGrade isEqualToString:@"全部"]) {
+            NSString *allStr = [NSString stringWithFormat:@"%@ %@", q.knowledgePoint ?: @"", q.questionText ?: @""];
+            gradeMatch = [allStr containsString:_filterGrade] || ([_filterGrade isEqualToString:@"高三"] && [allStr containsString:@"高考"]);
+        }
+
+        // 5. 掌握状态
+        BOOL masteryMatch = YES;
+        if ([_filterMastery isEqualToString:@"已掌握"]) {
+            masteryMatch = q.isMastered;
+        } else if ([_filterMastery isEqualToString:@"待复习"]) {
+            masteryMatch = !q.isMastered;
+        }
+
+        // 6. 错因
+        BOOL causeMatch = YES;
+        if (![_filterCause isEqualToString:@"全部"]) {
+            causeMatch = [q.mistakeCause containsString:_filterCause];
+        }
+
+        if (subjectMatch && kwMatch && srcMatch && gradeMatch && masteryMatch && causeMatch) {
             [res addObject:q];
         }
     }
+
+    // 时间排序
+    if ([_filterTime isEqualToString:@"最早录入优先"]) {
+        res = [[res sortedArrayUsingComparator:^NSComparisonResult(GSWrongQuestion *q1, GSWrongQuestion *q2) {
+            return [q1.createdAt compare:q2.createdAt];
+        }] mutableCopy];
+    }
+
     self.filteredQuestions = [res copy];
     [self updateStats];
     [self.tableView reloadData];
@@ -203,7 +432,7 @@
     }
     NSInteger needReview = total - mastered;
 
-    UILabel *lbl = [[UILabel alloc] initWithFrame:CGRectMake(16, 0, self.view.bounds.size.width - 32, 36)];
+    UILabel *lbl = [[UILabel alloc] initWithFrame:CGRectMake(16, 0, self.view.bounds.size.width - 32, 34)];
     lbl.font = [UIFont systemFontOfSize:12 weight:UIFontWeightMedium];
     lbl.textColor = [UIColor colorWithRed:0.40 green:0.45 blue:0.52 alpha:1.0];
     lbl.text = [NSString stringWithFormat:@"总计收录 %ld 题 · 待复习 %ld · 艾宾浩斯已掌握 %ld", (long)total, (long)needReview, (long)mastered];

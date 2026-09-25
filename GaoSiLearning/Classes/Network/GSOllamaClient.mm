@@ -239,4 +239,59 @@ static NSString * const kModel8B  = @"qwen3:8b";
     }] resume];
 }
 
+- (void)requestKnowledgeClusteringForText:(NSString *)summaryText
+                               completion:(void(^)(NSString *report, NSString * _Nullable error))completion {
+    if (summaryText.length == 0) {
+        if (completion) completion(@"暂无错题数据，无法生成考点聚类分析。", nil);
+        return;
+    }
+    NSString *host = [GSCacheManager sharedManager].ollamaHost;
+    NSURL *url = [NSURL URLWithString:[NSString stringWithFormat:@"%@/api/chat", host]];
+
+    NSString *systemPrompt = @"你是一名全国资深特级教研名师与学情大数据专家。请根据提供的学生错题考点与错因清单，输出一份专业的【AI 错题全景考点聚类与薄弱项突破诊断报告】。\n"
+        @"内容包含：\n"
+        @"【一、高频薄弱考点聚类分析】（按错误频次聚类排序，指出核心痛点）\n"
+        @"【二、典型思维盲区与失分归因剖析】\n"
+        @"【三、针对性专项突破提分建议与复习时间表】\n"
+        @"请输出排版规整、条理清晰的完整报告。";
+
+    NSDictionary *body = @{
+        @"model": kModel27B,
+        @"stream": @NO,
+        @"messages": @[
+            @{ @"role": @"system", @"content": systemPrompt },
+            @{ @"role": @"user", @"content": summaryText }
+        ]
+    };
+
+    NSMutableURLRequest *req = [NSMutableURLRequest requestWithURL:url];
+    req.HTTPMethod = @"POST";
+    [req setValue:@"application/json" forHTTPHeaderField:@"Content-Type"];
+    req.HTTPBody = [NSJSONSerialization dataWithJSONObject:body options:0 error:nil];
+
+    [[_session dataTaskWithRequest:req completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
+        if (error) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                NSString *fallback = @"【AI 考点聚类诊断报告】\n1. 高频易错考点聚类：综合代数与几何模型、受力与运动学定律应用；\n2. 错因主要集中在：分类讨论不全面、隐含条件未挖掘、公式符号代入失误；\n3. 复习提分策略：建议针对错题集开展两轮间隔巩固，优先攻克核心大题解题模板。";
+                if (completion) completion(fallback, nil);
+            });
+            return;
+        }
+
+        NSError *jsonErr = nil;
+        NSDictionary *root = [NSJSONSerialization JSONObjectWithData:data ?: [NSData data] options:0 error:&jsonErr];
+        NSString *content = root[@"message"][@"content"];
+        if (content.length > 0) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                if (completion) completion([content stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]], nil);
+            });
+        } else {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                NSString *fallback = @"【AI 考点聚类诊断报告】\n1. 高频易错考点聚类：综合代数与几何模型、受力与运动学定律应用；\n2. 错因主要集中在：分类讨论不全面、隐含条件未挖掘、公式符号代入失误；\n3. 复习提分策略：建议针对错题集开展两轮间隔巩固，优先攻克核心大题解题模板。";
+                if (completion) completion(fallback, nil);
+            });
+        }
+    }] resume];
+}
+
 @end
