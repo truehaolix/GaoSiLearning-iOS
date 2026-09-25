@@ -8,6 +8,56 @@ static NSString * const kModel8B  = @"qwen3:8b";
     NSURLSession *_session;
 }
 
++ (NSDictionary *)defaultOllamaOptionsWithTemperature:(float)temperature numPredict:(NSInteger)numPredict {
+    return @{
+        @"temperature": @(temperature),
+        @"num_ctx": @4096,
+        @"top_p": @0.85,
+        @"repeat_penalty": @1.1,
+        @"num_predict": @(numPredict)
+    };
+}
+
++ (NSString *)cleanContentFromMessage:(NSDictionary *)messageDict {
+    if (![messageDict isKindOfClass:[NSDictionary class]]) return @"";
+    NSString *content = messageDict[@"content"];
+    if (![content isKindOfClass:[NSString class]] || content.length == 0) {
+        NSString *thinking = messageDict[@"thinking"];
+        if ([thinking isKindOfClass:[NSString class]] && thinking.length > 0) {
+            NSArray *markers = @[@"最终答案：", @"最终答案:", @"解析如下：", @"综上所述，", @"综上，", @"总结："];
+            for (NSString *marker in markers) {
+                NSRange r = [thinking rangeOfString:marker options:NSBackwardsSearch];
+                if (r.location != NSNotFound) {
+                    content = [thinking substringFromIndex:r.location];
+                    break;
+                }
+            }
+            if (!content || content.length == 0) {
+                content = thinking;
+            }
+        }
+    }
+    if (!content) return @"";
+
+    // 移除可能存在的 <think> 思考标签
+    NSRegularExpression *thinkRegex = [NSRegularExpression regularExpressionWithPattern:@"<think>[\\s\\S]*?</think>" options:0 error:nil];
+    content = [thinkRegex stringByReplacingMatchesInString:content options:0 range:NSMakeRange(0, content.length) withTemplate:@""];
+
+    // 清理 markdown 代码块包裹
+    NSString *cleaned = [content stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+    if ([cleaned hasPrefix:@"```json"]) {
+        cleaned = [cleaned substringFromIndex:7];
+    } else if ([cleaned hasPrefix:@"```markdown"]) {
+        cleaned = [cleaned substringFromIndex:11];
+    } else if ([cleaned hasPrefix:@"```"]) {
+        cleaned = [cleaned substringFromIndex:3];
+    }
+    if ([cleaned hasSuffix:@"```"]) {
+        cleaned = [cleaned substringToIndex:cleaned.length - 3];
+    }
+    return [cleaned stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+}
+
 + (instancetype)sharedClient {
     static GSOllamaClient *instance = nil;
     static dispatch_once_t onceToken;
@@ -21,8 +71,8 @@ static NSString * const kModel8B  = @"qwen3:8b";
     self = [super init];
     if (self) {
         NSURLSessionConfiguration *config = [NSURLSessionConfiguration defaultSessionConfiguration];
-        config.timeoutIntervalForRequest = 180.0;
-        config.timeoutIntervalForResource = 180.0;
+        config.timeoutIntervalForRequest = 60.0;
+        config.timeoutIntervalForResource = 60.0;
         _session = [NSURLSession sessionWithConfiguration:config];
     }
     return self;
@@ -31,21 +81,50 @@ static NSString * const kModel8B  = @"qwen3:8b";
 - (void)requestAiAnalysisForText:(NSString *)ocrText
                       completion:(GSAiAnalysisCompletion)completion {
     if (ocrText.length == 0) {
-        completion(nil, @"题干为空");
+        if (completion) completion(nil, @"题干为空");
         return;
     }
 
+    // 1. 优先尝试 27B 旗舰模型
+    [self executeAiAnalysisWithModel:kModel27B text:ocrText completion:^(GSAiAnalysisResult *res, NSString *err) {
+        if (res) {
+            if (completion) completion(res, nil);
+            return;
+        }
+
+        // 2. 自动降级尝试 8B 极速模型
+        [self executeAiAnalysisWithModel:kModel8B text:ocrText completion:^(GSAiAnalysisResult *res8b, NSString *err8b) {
+            if (res8b) {
+                if (completion) completion(res8b, nil);
+                return;
+            }
+
+            // 3. 兜底使用本地规则库
+            dispatch_async(dispatch_get_main_queue(), ^{
+                GSAiAnalysisResult *localRes = [self buildFallbackResultForText:ocrText];
+                if (completion) completion(localRes, nil);
+            });
+        }];
+    }];
+}
+
+- (void)executeAiAnalysisWithModel:(NSString *)model
+                              text:(NSString *)ocrText
+                        completion:(GSAiAnalysisCompletion)completion {
     NSString *host = [GSCacheManager sharedManager].ollamaHost;
     NSURL *url = [NSURL URLWithString:[NSString stringWithFormat:@"%@/api/chat", host]];
 
-    NSString *prompt = [NSString stringWithFormat:
-        @"你是一名资深中小学名师与考情分析专家。请根据学生上传的题目文本，进行深入学科判断、核心知识点提炼、错因归纳与1道高匹配同考点变式练习题生成。\n"
-        @"题目内容：\n\"\"\"\n%@\n\"\"\"\n\n"
+    NSString *systemPrompt = @"你是一个全国资深特级教研名师与高斯知衡AI学情分析专家。请对学生错题进行深度学情诊断与变式题设计。\n"
+        @"要求：\n"
+        @"1. 学科必须精准判断：数学、物理、化学、生物、英语、语文之一；\n"
+        @"2. 核心考点：定位到具体三级考点（如“椭圆离心率与几何性质”、“导数构造辅助函数与零点存在性”等），切勿宽泛；\n"
+        @"3. 错因剖析：深入推断学生思维盲区、公式死记硬背、忽视隐含条件或分类讨论不全等认知根因（20-40字）；\n"
+        @"4. 变式题目：生成1-2道梯度合理的优质同类变式单选题，选项包含典型干扰项与易错诱饵，数学公式必须严格使用标准LaTeX语法（行内用 $...$，独立用 $$...$$，公式内严禁出现中文汉字）。\n\n"
         @"必须以纯 JSON 格式输出，不要包含任何前后缀、注释或代码块标记：\n"
         @"{\n"
-        @"  \"subject\": \"数学/物理/化学/语文/英语/生物/历史/地理/政治\",\n"
-        @"  \"knowledgePoint\": \"提取最核心的1-2个具体考点，如：平面向量数量积、二次函数极值\",\n"
-        @"  \"mistakeCause\": \"深入推断学生最可能的思维误区或计算错因（20字以内）\",\n"
+        @"  \"subject\": \"数学\",\n"
+        @"  \"knowledgePoint\": \"具体三级考点名称\",\n"
+        @"  \"mistakeCause\": \"精准错因与思维卡点剖析\",\n"
         @"  \"similarQuestions\": [\n"
         @"    {\n"
         @"      \"id\": \"sim_1\",\n"
@@ -57,19 +136,22 @@ static NSString * const kModel8B  = @"qwen3:8b";
         @"        {\"key\": \"D\", \"content\": \"选项D内容\"}\n"
         @"      ],\n"
         @"      \"answer\": \"A\",\n"
-        @"      \"analysis\": \"名师精辟解析与解题思路\",\n"
+        @"      \"analysis\": \"名师分步解题思路与解析，标明突破口与易错点\",\n"
         @"      \"difficulty\": \"中等\",\n"
         @"      \"source\": \"高斯知衡 AI 变式库\"\n"
         @"    }\n"
         @"  ]\n"
-        @"}", ocrText];
+        @"}";
 
     NSDictionary *payload = @{
-        @"model": kModel27B,
+        @"model": model ?: kModel27B,
         @"stream": @NO,
+        @"format": @"json",
+        @"keep_alive": @"24h",
+        @"options": [GSOllamaClient defaultOllamaOptionsWithTemperature:0.2f numPredict:2048],
         @"messages": @[
-            @{ @"role": @"system", @"content": @"你是一个严谨的教学AI，严格输出指定JSON结构。" },
-            @{ @"role": @"user", @"content": prompt }
+            @{ @"role": @"system", @"content": systemPrompt },
+            @{ @"role": @"user", @"content": ocrText }
         ]
     };
 
@@ -79,37 +161,19 @@ static NSString * const kModel8B  = @"qwen3:8b";
     req.HTTPBody = [NSJSONSerialization dataWithJSONObject:payload options:0 error:nil];
 
     [[_session dataTaskWithRequest:req completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
-        if (error) {
-            // 自动容灾降级为本地规则生成
-            dispatch_async(dispatch_get_main_queue(), ^{
-                GSAiAnalysisResult *localRes = [self buildFallbackResultForText:ocrText];
-                completion(localRes, nil);
-            });
+        if (error || !data) {
+            completion(nil, error.localizedDescription ?: @"网络异常");
             return;
         }
 
         NSError *jsonErr = nil;
-        NSDictionary *root = [NSJSONSerialization JSONObjectWithData:data ?: [NSData data] options:0 error:&jsonErr];
-        NSString *content = root[@"message"][@"content"];
+        NSDictionary *root = [NSJSONSerialization JSONObjectWithData:data options:0 error:&jsonErr];
+        NSString *cleaned = [GSOllamaClient cleanContentFromMessage:root[@"message"]];
 
-        if (!content || content.length == 0) {
-            dispatch_async(dispatch_get_main_queue(), ^{
-                completion([self buildFallbackResultForText:ocrText], nil);
-            });
+        if (cleaned.length == 0) {
+            completion(nil, @"大模型返回空响应");
             return;
         }
-
-        // 清理可能包含的 markdown ```json 包裹
-        NSString *cleaned = [content stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
-        if ([cleaned hasPrefix:@"```json"]) {
-            cleaned = [cleaned substringFromIndex:7];
-        } else if ([cleaned hasPrefix:@"```"]) {
-            cleaned = [cleaned substringFromIndex:3];
-        }
-        if ([cleaned hasSuffix:@"```"]) {
-            cleaned = [cleaned substringToIndex:cleaned.length - 3];
-        }
-        cleaned = [cleaned stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
 
         NSData *cleanData = [cleaned dataUsingEncoding:NSUTF8StringEncoding];
         NSDictionary *parsedJson = [NSJSONSerialization JSONObjectWithData:cleanData options:0 error:nil];
@@ -120,9 +184,7 @@ static NSString * const kModel8B  = @"qwen3:8b";
                 completion(result, nil);
             });
         } else {
-            dispatch_async(dispatch_get_main_queue(), ^{
-                completion([self buildFallbackResultForText:ocrText], nil);
-            });
+            completion(nil, @"JSON 解析失败");
         }
     }] resume];
 }
@@ -188,21 +250,51 @@ static NSString * const kModel8B  = @"qwen3:8b";
         if (completion) completion(@"暂无题目内容，无法生成解析。", nil);
         return;
     }
+
+    [self executeStepByStepWithModel:kModel27B questionText:questionText subject:subject knowledgePoint:knowledgePoint completion:^(NSString *sol27b, NSString *err27b) {
+        if (sol27b && sol27b.length > 0) {
+            if (completion) completion(sol27b, nil);
+            return;
+        }
+
+        // 降级尝试 8B 模型极速推导
+        [self executeStepByStepWithModel:kModel8B questionText:questionText subject:subject knowledgePoint:knowledgePoint completion:^(NSString *sol8b, NSString *err8b) {
+            if (sol8b && sol8b.length > 0) {
+                if (completion) completion(sol8b, nil);
+                return;
+            }
+
+            dispatch_async(dispatch_get_main_queue(), ^{
+                NSString *fallback = [NSString stringWithFormat:@"【名师解析】\n本题重点考查【%@ - %@】的核心应用。\n1. 审题时需仔细抓取已知量与隐藏条件；\n2. 建立对应的数学/科学模型，注意分步化简与公式代入时的符号正负；\n3. 运算结束后务必检验定义域与边界极值条件，避免以偏概全。", subject ?: @"数学", knowledgePoint ?: @"重点"];
+                if (completion) completion(fallback, nil);
+            });
+        }];
+    }];
+}
+
+- (void)executeStepByStepWithModel:(NSString *)model
+                      questionText:(NSString *)questionText
+                           subject:(NSString *)subject
+                    knowledgePoint:(NSString *)knowledgePoint
+                        completion:(void(^)(NSString *solution, NSString * _Nullable error))completion {
     NSString *host = [GSCacheManager sharedManager].ollamaHost;
     NSURL *url = [NSURL URLWithString:[NSString stringWithFormat:@"%@/api/chat", host]];
 
-    NSString *systemPrompt = @"你是一名资深中小学及高考名师。请针对提供的错题，输出一份高质量的深度解析与名师解答。\n"
-        @"内容包含：\n"
-        @"【一、审题要点与考查方向】\n"
-        @"【二、名师分步详解】（遇到数学公式、算式、符号，必须严格使用标准LaTeX语法，行内用 $...$，独立用 $$...$$）\n"
-        @"【三、易错盲区与举一反三反思】\n"
-        @"请直接输出规范生动、逻辑清晰的解析文本。";
+    NSString *systemPrompt = @"你是一名全国资深特级教研名师。请针对提供的错题，输出一份高质量的名师分步精讲与解题锦囊。\n"
+        @"请严格遵循以下五维标准结构输出，语言精辟规范，逻辑层层递进：\n\n"
+        @"## 【一、考点与题型定位】\n精准指出本题考查的核心考点、知识模块与考题难度层级。\n\n"
+        @"## 【二、审题关键与突破口】\n一句话直击破局关键，明确指出题目中的隐含条件与审题陷阱。\n\n"
+        @"## 【三、名师规范解答】\n按高考试卷标准评分细则分步书写推导，逻辑严密清晰。遇到数学物理公式必须严格使用标准LaTeX语法，行内用 $...$，独立成行用 $$...$$，严禁在公式内部夹杂中文汉字，核心最终答案必须使用 \\boxed{...} 醒目标注。\n\n"
+        @"## 【四、易错盲区与防坑锦囊】\n总结学生常犯的2-3个失分陷阱（如忽略定义域、分类讨论遗漏、正负号代入失误等）。\n\n"
+        @"## 【五、名师心法与解题模型】\n提炼通性通法、秒杀验算技巧或同类题型的通用解题模型。";
 
     NSString *userContent = [NSString stringWithFormat:@"学科：%@\n考点：%@\n题目内容：\n%@", subject ?: @"数学", knowledgePoint ?: @"重点", questionText];
 
     NSDictionary *body = @{
-        @"model": kModel27B,
+        @"model": model ?: kModel27B,
         @"stream": @NO,
+        @"keep_alive": @"24h",
+        @"options": [GSOllamaClient defaultOllamaOptionsWithTemperature:0.2f numPredict:2048],
         @"messages": @[
             @{ @"role": @"system", @"content": systemPrompt },
             @{ @"role": @"user", @"content": userContent }
@@ -215,26 +307,20 @@ static NSString * const kModel8B  = @"qwen3:8b";
     req.HTTPBody = [NSJSONSerialization dataWithJSONObject:body options:0 error:nil];
 
     [[_session dataTaskWithRequest:req completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
-        if (error) {
-            dispatch_async(dispatch_get_main_queue(), ^{
-                NSString *fallback = [NSString stringWithFormat:@"【名师解析】\n本题重点考查【%@ - %@】的核心应用。\n1. 审题时需仔细抓取已知量与隐藏条件；\n2. 建立对应的数学/科学模型，注意分步化简与公式代入时的符号正负；\n3. 运算结束后务必检验定义域与边界极值条件，避免以偏概全。", subject ?: @"数学", knowledgePoint ?: @"重点"];
-                if (completion) completion(fallback, nil);
-            });
+        if (error || !data) {
+            completion(nil, error.localizedDescription ?: @"网络异常");
             return;
         }
 
         NSError *jsonErr = nil;
-        NSDictionary *root = [NSJSONSerialization JSONObjectWithData:data ?: [NSData data] options:0 error:&jsonErr];
-        NSString *content = root[@"message"][@"content"];
-        if (content.length > 0) {
+        NSDictionary *root = [NSJSONSerialization JSONObjectWithData:data options:0 error:&jsonErr];
+        NSString *cleaned = [GSOllamaClient cleanContentFromMessage:root[@"message"]];
+        if (cleaned.length > 0) {
             dispatch_async(dispatch_get_main_queue(), ^{
-                if (completion) completion([content stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]], nil);
+                completion(cleaned, nil);
             });
         } else {
-            dispatch_async(dispatch_get_main_queue(), ^{
-                NSString *fallback = [NSString stringWithFormat:@"【名师解析】\n本题重点考查【%@ - %@】的核心应用。\n1. 审题时需仔细抓取已知量与隐藏条件；\n2. 建立对应的数学/科学模型，注意分步化简；\n3. 仔细核对关键步骤。", subject ?: @"数学", knowledgePoint ?: @"重点"];
-                if (completion) completion(fallback, nil);
-            });
+            completion(nil, @"大模型返回空解析");
         }
     }] resume];
 }
@@ -245,19 +331,46 @@ static NSString * const kModel8B  = @"qwen3:8b";
         if (completion) completion(@"暂无错题数据，无法生成考点聚类分析。", nil);
         return;
     }
+
+    [self executeKnowledgeClusteringWithModel:kModel27B summaryText:summaryText completion:^(NSString *rep27b, NSString *err27b) {
+        if (rep27b && rep27b.length > 0) {
+            if (completion) completion(rep27b, nil);
+            return;
+        }
+
+        [self executeKnowledgeClusteringWithModel:kModel8B summaryText:summaryText completion:^(NSString *rep8b, NSString *err8b) {
+            if (rep8b && rep8b.length > 0) {
+                if (completion) completion(rep8b, nil);
+                return;
+            }
+
+            dispatch_async(dispatch_get_main_queue(), ^{
+                NSString *fallback = @"【AI 考点聚类诊断报告】\n1. 高频易错考点聚类：综合代数与几何模型、受力与运动学定律应用；\n2. 错因主要集中在：分类讨论不全面、隐含条件未挖掘、公式符号代入失误；\n3. 复习提分策略：建议针对错题集开展两轮间隔巩固，优先攻克核心大题解题模板。";
+                if (completion) completion(fallback, nil);
+            });
+        }];
+    }];
+}
+
+- (void)executeKnowledgeClusteringWithModel:(NSString *)model
+                                summaryText:(NSString *)summaryText
+                                 completion:(void(^)(NSString *report, NSString * _Nullable error))completion {
     NSString *host = [GSCacheManager sharedManager].ollamaHost;
     NSURL *url = [NSURL URLWithString:[NSString stringWithFormat:@"%@/api/chat", host]];
 
-    NSString *systemPrompt = @"你是一名全国资深特级教研名师与学情大数据专家。请根据提供的学生错题考点与错因清单，输出一份专业的【AI 错题全景考点聚类与薄弱项突破诊断报告】。\n"
-        @"内容包含：\n"
-        @"【一、高频薄弱考点聚类分析】（按错误频次聚类排序，指出核心痛点）\n"
-        @"【二、典型思维盲区与失分归因剖析】\n"
-        @"【三、针对性专项突破提分建议与复习时间表】\n"
-        @"请输出排版规整、条理清晰的完整报告。";
+    NSString *systemPrompt = @"你是一名全国资深特级教研名师与学情大数据专家。请根据提供的学生错题考点与错因清单，输出一份权威专业的【AI 错题全景考点聚类与薄弱项突破诊断报告】。\n"
+        @"包含以下四大模块：\n"
+        @"## 【一、高频薄弱考点聚类图谱】\n按错误频次归类，分析代数、几何、实验等不同模块的失分权重。\n\n"
+        @"## 【二、思维认知盲区与失分根因剖析】\n从概念理解、公式应用、逻辑推理、运算规范四个维度深度归因。\n\n"
+        @"## 【三、能力维度评估与失分风险预警】\n评估各模块掌握度与后续综合题失分风险点。\n\n"
+        @"## 【四、分阶段提分突破路径与复习日程表】\n给出未来7天急救巩固计划与30天专项进阶路线图，包含每日针对性复盘动作。\n\n"
+        @"排版规整，条理清晰，具有权威指导价值。";
 
     NSDictionary *body = @{
-        @"model": kModel27B,
+        @"model": model ?: kModel27B,
         @"stream": @NO,
+        @"keep_alive": @"24h",
+        @"options": [GSOllamaClient defaultOllamaOptionsWithTemperature:0.25f numPredict:2048],
         @"messages": @[
             @{ @"role": @"system", @"content": systemPrompt },
             @{ @"role": @"user", @"content": summaryText }
@@ -270,26 +383,20 @@ static NSString * const kModel8B  = @"qwen3:8b";
     req.HTTPBody = [NSJSONSerialization dataWithJSONObject:body options:0 error:nil];
 
     [[_session dataTaskWithRequest:req completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
-        if (error) {
-            dispatch_async(dispatch_get_main_queue(), ^{
-                NSString *fallback = @"【AI 考点聚类诊断报告】\n1. 高频易错考点聚类：综合代数与几何模型、受力与运动学定律应用；\n2. 错因主要集中在：分类讨论不全面、隐含条件未挖掘、公式符号代入失误；\n3. 复习提分策略：建议针对错题集开展两轮间隔巩固，优先攻克核心大题解题模板。";
-                if (completion) completion(fallback, nil);
-            });
+        if (error || !data) {
+            completion(nil, error.localizedDescription ?: @"网络异常");
             return;
         }
 
         NSError *jsonErr = nil;
-        NSDictionary *root = [NSJSONSerialization JSONObjectWithData:data ?: [NSData data] options:0 error:&jsonErr];
-        NSString *content = root[@"message"][@"content"];
-        if (content.length > 0) {
+        NSDictionary *root = [NSJSONSerialization JSONObjectWithData:data options:0 error:&jsonErr];
+        NSString *cleaned = [GSOllamaClient cleanContentFromMessage:root[@"message"]];
+        if (cleaned.length > 0) {
             dispatch_async(dispatch_get_main_queue(), ^{
-                if (completion) completion([content stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]], nil);
+                completion(cleaned, nil);
             });
         } else {
-            dispatch_async(dispatch_get_main_queue(), ^{
-                NSString *fallback = @"【AI 考点聚类诊断报告】\n1. 高频易错考点聚类：综合代数与几何模型、受力与运动学定律应用；\n2. 错因主要集中在：分类讨论不全面、隐含条件未挖掘、公式符号代入失误；\n3. 复习提分策略：建议针对错题集开展两轮间隔巩固，优先攻克核心大题解题模板。";
-                if (completion) completion(fallback, nil);
-            });
+            completion(nil, @"大模型返回空报告");
         }
     }] resume];
 }
@@ -311,43 +418,69 @@ static NSString * const kModel8B  = @"qwen3:8b";
         else targetKp = @"导数压轴分类讨论与零点存在性";
     }
 
+    [self executeCheckInWithModel:kModel27B grade:grade targetKp:targetKp completion:^(NSDictionary *d27b, NSString *err27b) {
+        if (d27b) {
+            if (completion) completion(d27b, nil);
+            return;
+        }
+
+        [self executeCheckInWithModel:kModel8B grade:grade targetKp:targetKp completion:^(NSDictionary *d8b, NSString *err8b) {
+            if (d8b) {
+                if (completion) completion(d8b, nil);
+                return;
+            }
+
+            dispatch_async(dispatch_get_main_queue(), ^{
+                if (completion) completion([self defaultCheckInDataForGrade:grade kp:targetKp], nil);
+            });
+        }];
+    }];
+}
+
+- (void)executeCheckInWithModel:(NSString *)model
+                          grade:(NSString *)grade
+                       targetKp:(NSString *)targetKp
+                     completion:(void(^)(NSDictionary * _Nullable data, NSString * _Nullable error))completion {
     NSString *host = [GSCacheManager sharedManager].ollamaHost;
     NSURL *url = [NSURL URLWithString:[NSString stringWithFormat:@"%@/api/chat", host]];
 
     NSString *systemPrompt = [NSString stringWithFormat:
-        @"你是一名全国资深特级教师与教研名师。请根据学生年级【%@】和错题考点【%@】，输出一份每日通关打卡内容。\n"
-        @"必须返回合法的纯JSON对象（不要Markdown代码块，直接返回{...}）：\n"
+        @"你是一名全国资深重点高中特级教师与教研带头人。\n"
+        @"请根据学生所在年级【%@】及其错题本中最薄弱的核心考点【%@】，编写一份定制的今日通关打卡内容。\n"
+        @"严格输出合法的纯JSON对象（不要Markdown代码块，直接返回{...}）：\n"
         @"{\n"
         @"  \"knowledgePoint\": \"%@\",\n"
         @"  \"grade\": \"%@\",\n"
-        @"  \"summary\": \"考点核心本质（100字左右）\",\n"
-        @"  \"keyFormulas\": \"必备核心公式定理（包含数学符号）\",\n"
-        @"  \"commonTraps\": \"典型失分避坑建议（分1. 2. 3.点）\",\n"
+        @"  \"summary\": \"深入浅出提炼该考点的核心本质与考查关键（120-180字）\",\n"
+        @"  \"keyFormulas\": \"必记核心定理、通解公式或思维定势（遇到公式必须用标准LaTeX语法如 $...$ 或 $$...$$）\",\n"
+        @"  \"commonTraps\": \"学生最容易失分的3个典型盲区陷阱（分点 1. 2. 3. 列出，点明防坑策略）\",\n"
         @"  \"questions\": [\n"
         @"    {\n"
-        @"      \"title\": \"通关实战 1\",\n"
-        @"      \"stem\": \"典型单选题干\",\n"
-        @"      \"options\": [\"A. ...\", \"B. ...\", \"C. ...\", \"D. ...\"],\n"
+        @"      \"title\": \"通关实战 1 · 核心考点基础巩固\",\n"
+        @"      \"stem\": \"典型高频单选客观题题干（含标准LaTeX公式）\",\n"
+        @"      \"options\": [\"A. 选项A内容\", \"B. 选项B内容\", \"C. 选项C内容\", \"D. 选项D内容\"],\n"
         @"      \"answer\": \"A\",\n"
-        @"      \"explanation\": \"分步破题思路与解析\"\n"
+        @"      \"explanation\": \"名师分步剖析思路、解题关键转化与为什么选A\"\n"
         @"    },\n"
         @"    {\n"
-        @"      \"title\": \"通关实战 2\",\n"
-        @"      \"stem\": \"进阶单选题干\",\n"
-        @"      \"options\": [\"A. ...\", \"B. ...\", \"C. ...\", \"D. ...\"],\n"
+        @"      \"title\": \"通关实战 2 · 思维进阶防坑变式\",\n"
+        @"      \"stem\": \"思维进阶防坑单选题干（含标准LaTeX公式）\",\n"
+        @"      \"options\": [\"A. 选项A内容\", \"B. 选项B内容\", \"C. 选项C内容\", \"D. 选项D内容\"],\n"
         @"      \"answer\": \"B\",\n"
-        @"      \"explanation\": \"分步破题思路与解析\"\n"
+        @"      \"explanation\": \"名师分步剖析思路、解题关键转化与为什么选B\"\n"
         @"    }\n"
         @"  ]\n"
         @"}", grade ?: @"高中", targetKp, targetKp, grade ?: @"高中"];
 
     NSDictionary *body = @{
-        @"model": kModel27B,
+        @"model": model ?: kModel27B,
         @"stream": @NO,
         @"format": @"json",
+        @"keep_alive": @"24h",
+        @"options": [GSOllamaClient defaultOllamaOptionsWithTemperature:0.2f numPredict:2048],
         @"messages": @[
             @{ @"role": @"system", @"content": systemPrompt },
-            @{ @"role": @"user", @"content": [NSString stringWithFormat:@"请生成【%@】年级的【%@】今日打卡与通关题目", grade ?: @"高中", targetKp] }
+            @{ @"role": @"user", @"content": [NSString stringWithFormat:@"请为【%@】年级的【%@】考点生成今日打卡学习内容与通关自测练习。", grade ?: @"高中", targetKp] }
         ]
     };
 
@@ -358,37 +491,25 @@ static NSString * const kModel8B  = @"qwen3:8b";
 
     [[_session dataTaskWithRequest:req completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
         if (error || !data) {
-            dispatch_async(dispatch_get_main_queue(), ^{
-                if (completion) completion([self defaultCheckInDataForGrade:grade kp:targetKp], nil);
-            });
+            completion(nil, error.localizedDescription ?: @"网络异常");
             return;
         }
 
         NSError *jsonErr = nil;
         NSDictionary *root = [NSJSONSerialization JSONObjectWithData:data options:0 error:&jsonErr];
-        NSString *content = root[@"message"][@"content"];
-        if (content.length > 0) {
-            NSString *jsonStr = content;
-            if ([jsonStr hasPrefix:@"```"]) {
-                NSRange r1 = [jsonStr rangeOfString:@"\n"];
-                NSRange r2 = [jsonStr rangeOfString:@"```" options:NSBackwardsSearch];
-                if (r1.location != NSNotFound && r2.location != NSNotFound && r2.location > r1.location) {
-                    jsonStr = [jsonStr substringWithRange:NSMakeRange(r1.location + 1, r2.location - r1.location - 1)];
-                }
-            }
-            NSData *jsonData = [jsonStr dataUsingEncoding:NSUTF8StringEncoding];
+        NSString *cleaned = [GSOllamaClient cleanContentFromMessage:root[@"message"]];
+        if (cleaned.length > 0) {
+            NSData *jsonData = [cleaned dataUsingEncoding:NSUTF8StringEncoding];
             NSDictionary *dict = [NSJSONSerialization JSONObjectWithData:jsonData options:0 error:nil];
             if ([dict isKindOfClass:[NSDictionary class]] && dict[@"summary"] && dict[@"questions"]) {
                 dispatch_async(dispatch_get_main_queue(), ^{
-                    if (completion) completion(dict, nil);
+                    completion(dict, nil);
                 });
                 return;
             }
         }
 
-        dispatch_async(dispatch_get_main_queue(), ^{
-            if (completion) completion([self defaultCheckInDataForGrade:grade kp:targetKp], nil);
-        });
+        completion(nil, @"打卡内容生成失败");
     }] resume];
 }
 
