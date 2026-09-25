@@ -180,4 +180,63 @@ static NSString * const kModel8B  = @"qwen3:8b";
     return @"核心概念混淆或审题遗漏隐含条件";
 }
 
+- (void)requestStepByStepSolutionForText:(NSString *)questionText
+                                 subject:(NSString *)subject
+                          knowledgePoint:(NSString *)knowledgePoint
+                              completion:(void(^)(NSString *solution, NSString * _Nullable error))completion {
+    if (questionText.length == 0) {
+        if (completion) completion(@"暂无题目内容，无法生成解析。", nil);
+        return;
+    }
+    NSString *host = [GSCacheManager sharedManager].ollamaHost;
+    NSURL *url = [NSURL URLWithString:[NSString stringWithFormat:@"%@/api/chat", host]];
+
+    NSString *systemPrompt = @"你是一名资深中小学及高考名师。请针对提供的错题，输出一份高质量的深度解析与名师解答。\n"
+        @"内容包含：\n"
+        @"【一、审题要点与考查方向】\n"
+        @"【二、名师分步详解】（遇到数学公式、算式、符号，必须严格使用标准LaTeX语法，行内用 $...$，独立用 $$...$$）\n"
+        @"【三、易错盲区与举一反三反思】\n"
+        @"请直接输出规范生动、逻辑清晰的解析文本。";
+
+    NSString *userContent = [NSString stringWithFormat:@"学科：%@\n考点：%@\n题目内容：\n%@", subject ?: @"数学", knowledgePoint ?: @"重点", questionText];
+
+    NSDictionary *body = @{
+        @"model": kModel27B,
+        @"stream": @NO,
+        @"messages": @[
+            @{ @"role": @"system", @"content": systemPrompt },
+            @{ @"role": @"user", @"content": userContent }
+        ]
+    };
+
+    NSMutableURLRequest *req = [NSMutableURLRequest requestWithURL:url];
+    req.HTTPMethod = @"POST";
+    [req setValue:@"application/json" forHTTPHeaderField:@"Content-Type"];
+    req.HTTPBody = [NSJSONSerialization dataWithJSONObject:body options:0 error:nil];
+
+    [[_session dataTaskWithRequest:req completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
+        if (error) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                NSString *fallback = [NSString stringWithFormat:@"【名师解析】\n本题重点考查【%@ - %@】的核心应用。\n1. 审题时需仔细抓取已知量与隐藏条件；\n2. 建立对应的数学/科学模型，注意分步化简与公式代入时的符号正负；\n3. 运算结束后务必检验定义域与边界极值条件，避免以偏概全。", subject ?: @"数学", knowledgePoint ?: @"重点"];
+                if (completion) completion(fallback, nil);
+            });
+            return;
+        }
+
+        NSError *jsonErr = nil;
+        NSDictionary *root = [NSJSONSerialization JSONObjectWithData:data ?: [NSData data] options:0 error:&jsonErr];
+        NSString *content = root[@"message"][@"content"];
+        if (content.length > 0) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                if (completion) completion([content stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]], nil);
+            });
+        } else {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                NSString *fallback = [NSString stringWithFormat:@"【名师解析】\n本题重点考查【%@ - %@】的核心应用。\n1. 审题时需仔细抓取已知量与隐藏条件；\n2. 建立对应的数学/科学模型，注意分步化简；\n3. 仔细核对关键步骤。", subject ?: @"数学", knowledgePoint ?: @"重点"];
+                if (completion) completion(fallback, nil);
+            });
+        }
+    }] resume];
+}
+
 @end

@@ -33,6 +33,18 @@ typedef void(^GSBatchUploadCompletion)(BOOL success, NSInteger uploadedCount, NS
             isMastered:(BOOL)isMastered
             completion:(void(^)(BOOL success, NSString * _Nullable error))completion;
 
+/// 删除错题
+- (void)deleteWrongQuestion:(NSString *)questionId
+                 completion:(void(^)(BOOL success, NSString * _Nullable error))completion;
+
+/// 更新错题信息 (学科、考点、错因、题干)
+- (void)updateWrongQuestion:(NSString *)questionId
+                    subject:(nullable NSString *)subject
+             knowledgePoint:(nullable NSString *)knowledgePoint
+               mistakeCause:(nullable NSString *)mistakeCause
+              questionTitle:(nullable NSString *)questionTitle
+                 completion:(void(^)(BOOL success, NSString * _Nullable error))completion;
+
 @end
 
 NS_ASSUME_NONNULL_END

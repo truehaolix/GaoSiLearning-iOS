@@ -20,6 +20,12 @@ NS_ASSUME_NONNULL_BEGIN
 - (NSArray<GSWrongQuestion *> *)loadLocalWrongQuestions;
 - (void)saveWrongQuestions:(NSArray<GSWrongQuestion *> *)questions;
 - (void)addWrongQuestionLocally:(GSWrongQuestion *)question;
+- (void)deleteWrongQuestionLocally:(NSString *)questionId;
+- (void)updateWrongQuestionLocally:(NSString *)questionId
+                           subject:(nullable NSString *)subject
+                    knowledgePoint:(nullable NSString *)knowledgePoint
+                      mistakeCause:(nullable NSString *)mistakeCause
+                      questionText:(nullable NSString *)questionText;
 
 // 离线待同步队列
 - (NSArray<GSWrongQuestion *> *)loadPendingSyncQuestions;

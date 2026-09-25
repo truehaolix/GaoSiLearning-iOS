@@ -122,6 +122,42 @@ static NSString * const kDefaultOllama  = @"http://112.46.82.154:11434";
     }
 }
 
+- (void)deleteWrongQuestionLocally:(NSString *)questionId {
+    if (!questionId) return;
+    @synchronized (self) {
+        NSMutableArray<GSWrongQuestion *> *list = [[self loadLocalWrongQuestions] mutableCopy];
+        NSUInteger idx = [list indexOfObjectPassingTest:^BOOL(GSWrongQuestion * _Nonnull obj, NSUInteger idx, BOOL * _Nonnull stop) {
+            return [obj.questionId isEqualToString:questionId];
+        }];
+        if (idx != NSNotFound) {
+            [list removeObjectAtIndex:idx];
+            [self saveWrongQuestions:list];
+        }
+    }
+}
+
+- (void)updateWrongQuestionLocally:(NSString *)questionId
+                           subject:(nullable NSString *)subject
+                    knowledgePoint:(nullable NSString *)knowledgePoint
+                      mistakeCause:(nullable NSString *)mistakeCause
+                      questionText:(nullable NSString *)questionText {
+    if (!questionId) return;
+    @synchronized (self) {
+        NSMutableArray<GSWrongQuestion *> *list = [[self loadLocalWrongQuestions] mutableCopy];
+        NSUInteger idx = [list indexOfObjectPassingTest:^BOOL(GSWrongQuestion * _Nonnull obj, NSUInteger idx, BOOL * _Nonnull stop) {
+            return [obj.questionId isEqualToString:questionId];
+        }];
+        if (idx != NSNotFound) {
+            GSWrongQuestion *q = list[idx];
+            if (subject) q.subject = subject;
+            if (knowledgePoint) q.knowledgePoint = knowledgePoint;
+            if (mistakeCause) q.mistakeCause = mistakeCause;
+            if (questionText) q.questionText = questionText;
+            [self saveWrongQuestions:list];
+        }
+    }
+}
+
 #pragma mark - 待同步队列
 
 - (NSArray<GSWrongQuestion *> *)loadPendingSyncQuestions {

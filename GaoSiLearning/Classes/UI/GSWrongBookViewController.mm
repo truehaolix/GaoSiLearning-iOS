@@ -1,5 +1,7 @@
 #import "GSWrongBookViewController.h"
 #import "GSQuestionSelectViewController.h"
+#import "GSSimilarQuestionsViewController.h"
+#import "GSOllamaClient.h"
 #import "GSAPIClient.h"
 #import "GSCacheManager.h"
 #import "GSCaptureSession.h"
@@ -27,7 +29,7 @@
     self.title = @"智能错题本";
     self.view.backgroundColor = [UIColor colorWithRed:0.96 green:0.97 blue:0.98 alpha:1.0];
 
-    _subjects = @[@"全部", @"数学", @"物理", @"化学", @"语文", @"英语", @"生物", @"历史", @"地理"];
+    _subjects = @[@"全部", @"数学", @"物理", @"化学", @"语文", @"英语", @"生物", @"历史", @"地理", @"政治"];
     _selectedSubject = @"全部";
     _subjectButtons = [NSMutableArray array];
     _allQuestions = @[];
@@ -95,9 +97,15 @@
     _tableView.dataSource = self;
     _tableView.backgroundColor = [UIColor clearColor];
     _tableView.separatorStyle = UITableViewCellSeparatorStyleNone;
+
+    // 绑定长按手势弹出快捷管理菜单
+    UILongPressGestureRecognizer *lp = [[UILongPressGestureRecognizer alloc] initWithTarget:self action:@selector(handleTableViewLongPress:)];
+    lp.minimumPressDuration = 0.5;
+    [_tableView addGestureRecognizer:lp];
+
     [self.view addSubview:_tableView];
 
-    // 5. 底部全宽主操作按钮: 拍照 / 选取试卷录错题 (完全对齐 Android 去掉选题打印、扩充全宽主按钮)
+    // 5. 底部全宽主操作按钮: 拍照 / 选取试卷录错题
     _btnCapture = [UIButton buttonWithType:UIButtonTypeCustom];
     _btnCapture.backgroundColor = [UIColor colorWithRed:0.12 green:0.53 blue:0.90 alpha:1.0];
     [_btnCapture setTitle:@"📷 拍照 / 选取试卷录错题" forState:UIControlStateNormal];
@@ -303,6 +311,195 @@
     }
 
     return cell;
+}
+
+#pragma mark - 点击打开详情 & 长按操作菜单
+
+- (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
+    [tableView deselectRowAtIndexPath:indexPath animated:YES];
+    if (indexPath.row >= self.filteredQuestions.count) return;
+    GSWrongQuestion *q = self.filteredQuestions[indexPath.row];
+    [self showDetailForQuestion:q];
+}
+
+- (void)handleTableViewLongPress:(UILongPressGestureRecognizer *)gesture {
+    if (gesture.state != UIGestureRecognizerStateBegan) return;
+    CGPoint pt = [gesture locationInView:_tableView];
+    NSIndexPath *indexPath = [_tableView indexPathForRowAtPoint:pt];
+    if (!indexPath || indexPath.row >= self.filteredQuestions.count) return;
+
+    GSWrongQuestion *q = self.filteredQuestions[indexPath.row];
+    [self showActionMenuForQuestion:q];
+}
+
+- (void)showDetailForQuestion:(GSWrongQuestion *)q {
+    NSString *statusStr = q.isMastered ? @"已掌握 ✓" : [NSString stringWithFormat:@"阶段 %ld (待复习)", (long)q.reviewStage];
+    NSString *msg = [NSString stringWithFormat:@"【所属科目】%@\n【核心考点】%@\n【错因分析】%@\n【掌握状态】%@\n\n【题干内容】\n%@",
+                     q.subject ?: @"全科",
+                     q.knowledgePoint ?: @"核心考点",
+                     q.mistakeCause ?: @"思维盲区",
+                     statusStr,
+                     q.questionText.length > 0 ? q.questionText : @"【暂无纯文本题干，可参考原始录入切图】"];
+
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:[NSString stringWithFormat:@"%@ · 错题详情", q.subject ?: @"错题"]
+                                                                   message:msg
+                                                            preferredStyle:UIAlertControllerStyleAlert];
+
+    [alert addAction:[UIAlertAction actionWithTitle:@"💡 AI 名师解析" style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
+        [self showAnalysisForQuestion:q];
+    }]];
+
+    [alert addAction:[UIAlertAction actionWithTitle:@"🎯 举一反三变式" style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
+        [self openSimilarQuestionsForQuestion:q];
+    }]];
+
+    [alert addAction:[UIAlertAction actionWithTitle:@"关闭" style:UIAlertActionStyleCancel handler:nil]];
+
+    [self presentViewController:alert animated:YES completion:nil];
+}
+
+- (void)showActionMenuForQuestion:(GSWrongQuestion *)q {
+    UIAlertController *sheet = [UIAlertController alertControllerWithTitle:[NSString stringWithFormat:@"【%@】错题管理", q.subject ?: @"错题"]
+                                                                   message:[NSString stringWithFormat:@"考点：%@   错因：%@", q.knowledgePoint ?: @"未分类", q.mistakeCause ?: @"未归类"]
+                                                            preferredStyle:UIAlertControllerStyleActionSheet];
+
+    [sheet addAction:[UIAlertAction actionWithTitle:@"💡 AI 名师解析" style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
+        [self showAnalysisForQuestion:q];
+    }]];
+
+    [sheet addAction:[UIAlertAction actionWithTitle:@"🎯 同类变式题目" style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
+        [self openSimilarQuestionsForQuestion:q];
+    }]];
+
+    [sheet addAction:[UIAlertAction actionWithTitle:@"✏️ 编辑错题信息" style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
+        [self showEditDialogForQuestion:q];
+    }]];
+
+    [sheet addAction:[UIAlertAction actionWithTitle:@"📂 移入其他科目" style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
+        [self showMoveSubjectDialogForQuestion:q];
+    }]];
+
+    [sheet addAction:[UIAlertAction actionWithTitle:@"🗑️ 删除此错题" style:UIAlertActionStyleDestructive handler:^(UIAlertAction * _Nonnull action) {
+        [self showDeleteConfirmForQuestion:q];
+    }]];
+
+    [sheet addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
+
+    [self presentViewController:sheet animated:YES completion:nil];
+}
+
+#pragma mark - 5 大功能实现
+
+- (void)showDeleteConfirmForQuestion:(GSWrongQuestion *)q {
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"删除错题确认"
+                                                                   message:[NSString stringWithFormat:@"确定要从错题本中彻底删除这道错题吗？\n\n【科目】%@\n【考点】%@\n\n删除后相关的艾宾浩斯复习排程也将一并清除。", q.subject ?: @"全科", q.knowledgePoint ?: @""]
+                                                            preferredStyle:UIAlertControllerStyleAlert];
+
+    [alert addAction:[UIAlertAction actionWithTitle:@"删除" style:UIAlertActionStyleDestructive handler:^(UIAlertAction * _Nonnull action) {
+        [[GSCacheManager sharedManager] deleteWrongQuestionLocally:q.questionId];
+        [[GSAPIClient sharedClient] deleteWrongQuestion:q.questionId completion:^(BOOL success, NSString * _Nullable error) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                if (success) {
+                    [self showToast:@"错题已删除"];
+                }
+            });
+        }];
+        [self loadQuestions];
+    }]];
+
+    [alert addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
+    [self presentViewController:alert animated:YES completion:nil];
+}
+
+- (void)showEditDialogForQuestion:(GSWrongQuestion *)q {
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"✏️ 编辑错题信息"
+                                                                   message:@"修改考点、错因及题干内容"
+                                                            preferredStyle:UIAlertControllerStyleAlert];
+
+    [alert addTextFieldWithConfigurationHandler:^(UITextField * _Nonnull textField) {
+        textField.placeholder = @"核心考点";
+        textField.text = q.knowledgePoint;
+    }];
+
+    [alert addTextFieldWithConfigurationHandler:^(UITextField * _Nonnull textField) {
+        textField.placeholder = @"错因分析";
+        textField.text = q.mistakeCause;
+    }];
+
+    [alert addTextFieldWithConfigurationHandler:^(UITextField * _Nonnull textField) {
+        textField.placeholder = @"题干内容 (支持 LaTeX)";
+        textField.text = q.questionText;
+    }];
+
+    [alert addAction:[UIAlertAction actionWithTitle:@"保存修改" style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
+        NSString *newKp = alert.textFields[0].text;
+        NSString *newCause = alert.textFields[1].text;
+        NSString *newStem = alert.textFields[2].text;
+
+        [[GSCacheManager sharedManager] updateWrongQuestionLocally:q.questionId subject:nil knowledgePoint:newKp mistakeCause:newCause questionText:newStem];
+        [[GSAPIClient sharedClient] updateWrongQuestion:q.questionId subject:nil knowledgePoint:newKp mistakeCause:newCause questionTitle:newStem completion:^(BOOL success, NSString * _Nullable error) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                [self showToast:success ? @"错题修改已保存" : @"修改已存至本地离线"];
+            });
+        }];
+        [self loadQuestions];
+    }]];
+
+    [alert addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
+    [self presentViewController:alert animated:YES completion:nil];
+}
+
+- (void)showAnalysisForQuestion:(GSWrongQuestion *)q {
+    UIAlertController *loading = [UIAlertController alertControllerWithTitle:@"💡 AI 名师解析"
+                                                                     message:@"正在调用 Qwen 27B 大模型生成分步精解与易错避坑剖析...\n请稍候..."
+                                                              preferredStyle:UIAlertControllerStyleAlert];
+    [self presentViewController:loading animated:YES completion:^{
+        NSString *queryText = q.questionText.length > 0 ? q.questionText : q.knowledgePoint;
+        [[GSOllamaClient sharedClient] requestStepByStepSolutionForText:queryText subject:q.subject knowledgePoint:q.knowledgePoint completion:^(NSString *solution, NSString * _Nullable error) {
+            [loading dismissViewControllerAnimated:YES completion:^{
+                UIAlertController *resultAlert = [UIAlertController alertControllerWithTitle:@"💡 AI 名师解析 · Qwen 27B"
+                                                                                     message:solution
+                                                                              preferredStyle:UIAlertControllerStyleAlert];
+
+                [resultAlert addAction:[UIAlertAction actionWithTitle:@"复制解析" style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
+                    [UIPasteboard generalPasteboard].string = solution;
+                    [self showToast:@"解析已复制到剪贴板"];
+                }]];
+
+                [resultAlert addAction:[UIAlertAction actionWithTitle:@"关闭" style:UIAlertActionStyleCancel handler:nil]];
+                [self presentViewController:resultAlert animated:YES completion:nil];
+            }];
+        }];
+    }];
+}
+
+- (void)openSimilarQuestionsForQuestion:(GSWrongQuestion *)q {
+    GSSimilarQuestionsViewController *simVC = [[GSSimilarQuestionsViewController alloc] init];
+    simVC.subject = q.subject ?: @"数学";
+    simVC.knowledgePoint = q.knowledgePoint ?: @"重点知识";
+    [self.navigationController pushViewController:simVC animated:YES];
+}
+
+- (void)showMoveSubjectDialogForQuestion:(GSWrongQuestion *)q {
+    UIAlertController *sheet = [UIAlertController alertControllerWithTitle:@"移入其他科目"
+                                                                   message:@"请选择目标科目归类"
+                                                            preferredStyle:UIAlertControllerStyleActionSheet];
+
+    NSArray *allSubs = @[@"数学", @"物理", @"化学", @"语文", @"英语", @"生物", @"历史", @"地理", @"政治"];
+    for (NSString *sub in allSubs) {
+        [sheet addAction:[UIAlertAction actionWithTitle:sub style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
+            [[GSCacheManager sharedManager] updateWrongQuestionLocally:q.questionId subject:sub knowledgePoint:nil mistakeCause:nil questionText:nil];
+            [[GSAPIClient sharedClient] updateWrongQuestion:q.questionId subject:sub knowledgePoint:nil mistakeCause:nil questionTitle:nil completion:^(BOOL success, NSString * _Nullable error) {
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    [self showToast:[NSString stringWithFormat:@"已成功移入「%@」", sub]];
+                });
+            }];
+            [self loadQuestions];
+        }]];
+    }
+
+    [sheet addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
+    [self presentViewController:sheet animated:YES completion:nil];
 }
 
 #pragma mark - 录题交互

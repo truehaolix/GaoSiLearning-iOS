@@ -215,4 +215,67 @@
     }] resume];
 }
 
+- (void)deleteWrongQuestion:(NSString *)questionId
+                 completion:(void(^)(BOOL success, NSString * _Nullable error))completion {
+    if (!questionId) {
+        if (completion) completion(NO, @"ID为空");
+        return;
+    }
+    NSString *base = [GSCacheManager sharedManager].backendHost;
+    NSURL *url = [NSURL URLWithString:[NSString stringWithFormat:@"%@/api/wrong-questions/%@", base, questionId]];
+
+    NSMutableURLRequest *req = [NSMutableURLRequest requestWithURL:url];
+    req.HTTPMethod = @"DELETE";
+    NSString *token = [GSCacheManager sharedManager].currentUser.token;
+    if (token.length > 0) {
+        [req setValue:[NSString stringWithFormat:@"Bearer %@", token] forHTTPHeaderField:@"Authorization"];
+    }
+
+    [[_session dataTaskWithRequest:req completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
+        NSHTTPURLResponse *httpResp = (NSHTTPURLResponse *)response;
+        BOOL ok = (!error && httpResp.statusCode >= 200 && httpResp.statusCode < 300);
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (completion) completion(ok, error.localizedDescription);
+        });
+    }] resume];
+}
+
+- (void)updateWrongQuestion:(NSString *)questionId
+                    subject:(nullable NSString *)subject
+             knowledgePoint:(nullable NSString *)knowledgePoint
+               mistakeCause:(nullable NSString *)mistakeCause
+              questionTitle:(nullable NSString *)questionTitle
+                 completion:(void(^)(BOOL success, NSString * _Nullable error))completion {
+    if (!questionId) {
+        if (completion) completion(NO, @"ID为空");
+        return;
+    }
+    NSString *base = [GSCacheManager sharedManager].backendHost;
+    NSURL *url = [NSURL URLWithString:[NSString stringWithFormat:@"%@/api/wrong-questions/%@", base, questionId]];
+
+    NSMutableURLRequest *req = [NSMutableURLRequest requestWithURL:url];
+    req.HTTPMethod = @"PATCH";
+    [req setValue:@"application/json" forHTTPHeaderField:@"Content-Type"];
+    NSString *token = [GSCacheManager sharedManager].currentUser.token;
+    if (token.length > 0) {
+        [req setValue:[NSString stringWithFormat:@"Bearer %@", token] forHTTPHeaderField:@"Authorization"];
+    }
+
+    NSMutableDictionary *body = [NSMutableDictionary dictionary];
+    if (subject) body[@"subject"] = subject;
+    if (knowledgePoint) body[@"knowledgePoint"] = knowledgePoint;
+    if (mistakeCause) body[@"mistakeCause"] = mistakeCause;
+    if (questionTitle) body[@"questionTitle"] = questionTitle;
+
+    req.HTTPBody = [NSJSONSerialization dataWithJSONObject:body options:0 error:nil];
+
+    [[_session dataTaskWithRequest:req completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
+        NSHTTPURLResponse *httpResp = (NSHTTPURLResponse *)response;
+        BOOL ok = (!error && httpResp.statusCode >= 200 && httpResp.statusCode < 300);
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (completion) completion(ok, error.localizedDescription);
+        });
+    }] resume];
+}
+
 @end

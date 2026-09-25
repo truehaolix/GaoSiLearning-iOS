@@ -13,6 +13,12 @@ typedef void(^GSAiAnalysisCompletion)(GSAiAnalysisResult * _Nullable result, NSS
 - (void)requestAiAnalysisForText:(NSString *)ocrText
                       completion:(GSAiAnalysisCompletion)completion;
 
+/// 异步调用 Qwen 27B 大模型生成名师步骤详解与易错避坑反思
+- (void)requestStepByStepSolutionForText:(NSString *)questionText
+                                 subject:(NSString *)subject
+                          knowledgePoint:(NSString *)knowledgePoint
+                              completion:(void(^)(NSString *solution, NSString * _Nullable error))completion;
+
 /// 快速本地启发式学科判断 (毫秒级先发显示)
 + (NSString *)detectSubjectLocally:(NSString *)text;
 
