@@ -26,6 +26,7 @@
 		AA0100112C00000100000001 /* GSSimilarQuestionsViewController.mm in Sources */ = {isa = PBXBuildFile; fileRef = BB0100112C00000100000001 /* GSSimilarQuestionsViewController.mm */; };
 		AA0100182C00000100000001 /* GSOrganizeViewController.mm in Sources */ = {isa = PBXBuildFile; fileRef = BB0100182C00000100000001 /* GSOrganizeViewController.mm */; };
 		AA0100192C00000100000001 /* GSCheckInViewController.mm in Sources */ = {isa = PBXBuildFile; fileRef = BB0100192C00000100000001 /* GSCheckInViewController.mm */; };
+		AA0100202C00000100000001 /* GSMathFormatUtil.mm in Sources */ = {isa = PBXBuildFile; fileRef = BB0100202C00000100000001 /* GSMathFormatUtil.mm */; };
 		AA0100122C00000100000001 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = BB0100122C00000100000001 /* Assets.xcassets */; };
 		AA0100132C00000100000001 /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = BB0100132C00000100000001 /* LaunchScreen.storyboard */; };
 		AA0100142C00000100000001 /* WebKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = BB0100142C00000100000001 /* WebKit.framework */; };
@@ -41,6 +42,8 @@
 		BB0100032C00000100000002 /* SceneDelegate.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = SceneDelegate.h; sourceTree = "<group>"; };
 		BB0100042C00000100000001 /* ImageProcessor.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = ImageProcessor.mm; sourceTree = "<group>"; };
 		BB0100042C00000100000002 /* ImageProcessor.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = ImageProcessor.hpp; sourceTree = "<group>"; };
+		BB0100202C00000100000001 /* GSMathFormatUtil.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = GSMathFormatUtil.mm; sourceTree = "<group>"; };
+		BB0100202C00000100000002 /* GSMathFormatUtil.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = GSMathFormatUtil.h; sourceTree = "<group>"; };
 		BB0100052C00000100000001 /* GSModels.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = GSModels.mm; sourceTree = "<group>"; };
 		BB0100052C00000100000002 /* GSModels.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = GSModels.h; sourceTree = "<group>"; };
 		BB0100062C00000100000001 /* GSCacheManager.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = GSCacheManager.mm; sourceTree = "<group>"; };
@@ -127,6 +130,8 @@
 			children = (
 				BB0100042C00000100000002 /* ImageProcessor.hpp */,
 				BB0100042C00000100000001 /* ImageProcessor.mm */,
+				BB0100202C00000100000002 /* GSMathFormatUtil.h */,
+				BB0100202C00000100000001 /* GSMathFormatUtil.mm */,
 			);
 			path = Classes/Core;
 			sourceTree = "<group>";
@@ -294,6 +299,7 @@
 				AA0100112C00000100000001 /* GSSimilarQuestionsViewController.mm in Sources */,
 				AA0100182C00000100000001 /* GSOrganizeViewController.mm in Sources */,
 				AA0100192C00000100000001 /* GSCheckInViewController.mm in Sources */,
+				AA0100202C00000100000001 /* GSMathFormatUtil.mm in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

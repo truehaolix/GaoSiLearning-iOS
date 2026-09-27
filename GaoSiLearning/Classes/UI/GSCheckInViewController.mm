@@ -1,6 +1,7 @@
 #import "GSCheckInViewController.h"
 #import "GSOllamaClient.h"
 #import "GSCacheManager.h"
+#import "GSMathFormatUtil.h"
 
 static NSString *const kPrefCheckInStreak = @"GS_CHECKIN_STREAK_DAYS";
 static NSString *const kPrefCheckInLastDate = @"GS_CHECKIN_LAST_DATE";
@@ -329,10 +330,10 @@ static NSString *const kPrefCheckInHistory = @"GS_CHECKIN_HISTORY_DATES";
 }
 
 - (void)renderContentWithData:(NSDictionary *)data {
-    _lblKpTag.text = data[@"knowledgePoint"] ?: @"重点考点";
-    _lblSummary.text = data[@"summary"] ?: @"";
-    _lblFormulas.text = [NSString stringWithFormat:@" %@", data[@"keyFormulas"] ?: @""];
-    _lblTraps.text = [NSString stringWithFormat:@" %@", data[@"commonTraps"] ?: @""];
+    _lblKpTag.text = [GSMathFormatUtil formatString:data[@"knowledgePoint"] ?: @"重点考点"];
+    _lblSummary.text = [GSMathFormatUtil formatString:data[@"summary"] ?: @""];
+    _lblFormulas.text = [NSString stringWithFormat:@" %@", [GSMathFormatUtil formatString:data[@"keyFormulas"] ?: @""]];
+    _lblTraps.text = [NSString stringWithFormat:@" %@", [GSMathFormatUtil formatString:data[@"commonTraps"] ?: @""]];
 
     for (UIView *v in _questionsStack.arrangedSubviews) {
         [_questionsStack removeArrangedSubview:v];
@@ -369,7 +370,7 @@ static NSString *const kPrefCheckInHistory = @"GS_CHECKIN_HISTORY_DATES";
         stemLbl.font = [UIFont systemFontOfSize:14];
         stemLbl.textColor = [UIColor colorWithRed:0.1 green:0.1 blue:0.1 alpha:1.0];
         stemLbl.numberOfLines = 0;
-        stemLbl.text = q[@"stem"] ?: @"";
+        stemLbl.text = [GSMathFormatUtil formatString:q[@"stem"] ?: @""];
         [stemLbl sizeToFit];
         stemLbl.frame = CGRectMake(14, 40, cardW - 28, stemLbl.bounds.size.height);
         [qCard addSubview:stemLbl];
@@ -402,7 +403,7 @@ static NSString *const kPrefCheckInHistory = @"GS_CHECKIN_HISTORY_DATES";
         expText.font = [UIFont systemFontOfSize:12];
         expText.textColor = [UIColor colorWithRed:0.3 green:0.3 blue:0.3 alpha:1.0];
         expText.numberOfLines = 0;
-        expText.text = explanation;
+        expText.text = [GSMathFormatUtil formatString:explanation];
         [expText sizeToFit];
         expText.frame = CGRectMake(8, 24, cardW - 44, expText.bounds.size.height);
         [expBox addSubview:expText];
@@ -416,7 +417,7 @@ static NSString *const kPrefCheckInHistory = @"GS_CHECKIN_HISTORY_DATES";
             btn.layer.borderColor = [UIColor colorWithRed:0.89 green:0.91 blue:0.94 alpha:1.0].CGColor;
             btn.contentHorizontalAlignment = UIControlContentHorizontalAlignmentLeft;
             btn.titleEdgeInsets = UIEdgeInsetsMake(0, 12, 0, 12);
-            [btn setTitle:options[optIdx] forState:UIControlStateNormal];
+            [btn setTitle:[GSMathFormatUtil formatString:options[optIdx]] forState:UIControlStateNormal];
             [btn setTitleColor:[UIColor colorWithRed:0.1 green:0.1 blue:0.1 alpha:1.0] forState:UIControlStateNormal];
             btn.titleLabel.font = [UIFont systemFontOfSize:13];
 
@@ -438,7 +439,7 @@ static NSString *const kPrefCheckInHistory = @"GS_CHECKIN_HISTORY_DATES";
                     btn.backgroundColor = [UIColor colorWithRed:0.99 green:0.95 blue:0.95 alpha:1.0];
                     btn.layer.borderColor = [UIColor colorWithRed:0.94 green:0.27 blue:0.27 alpha:1.0].CGColor;
                     [btn setTitleColor:[UIColor colorWithRed:0.73 green:0.11 blue:0.11 alpha:1.0] forState:UIControlStateNormal];
-                    feedbackLbl.text = [NSString stringWithFormat:@"💡 选错了，正确答案是【%@】", answer];
+                    feedbackLbl.text = [NSString stringWithFormat:@"💡 选错了，正确答案是【%@】", [GSMathFormatUtil formatString:answer]];
                     feedbackLbl.textColor = [UIColor colorWithRed:0.86 green:0.15 blue:0.15 alpha:1.0];
 
                     // 高亮正确选项

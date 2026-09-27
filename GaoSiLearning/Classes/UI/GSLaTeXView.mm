@@ -1,4 +1,5 @@
 #import "GSLaTeXView.h"
+#import "GSMathFormatUtil.h"
 
 @interface GSLaTeXView ()
 @property (nonatomic, strong) WKWebView *webView;
@@ -26,12 +27,13 @@
 
 - (void)renderLaTeXContent:(NSString *)content {
     self.content = content ?: @"";
+    NSString *fallbackContent = [GSMathFormatUtil formatString:content ?: @""];
 
-    // 转义 JSON / JS 字符串中的反斜杠与换行
-    NSString *escaped = [self.content stringByReplacingOccurrencesOfString:@"\\" withString:@"\\\\"];
-    escaped = [escaped stringByReplacingOccurrencesOfString:@"`" withString:@"\\`"];
-    escaped = [escaped stringByReplacingOccurrencesOfString:@"$" withString:@"\\$"];
-    escaped = [escaped stringByReplacingOccurrencesOfString:@"\n" withString:@"<br/>"];
+    // 转义 HTML 换行与特殊字符
+    NSString *escapedFallback = [fallbackContent stringByReplacingOccurrencesOfString:@"&" withString:@"&amp;"];
+    escapedFallback = [escapedFallback stringByReplacingOccurrencesOfString:@"<" withString:@"&lt;"];
+    escapedFallback = [escapedFallback stringByReplacingOccurrencesOfString:@">" withString:@"&gt;"];
+    escapedFallback = [escapedFallback stringByReplacingOccurrencesOfString:@"\n" withString:@"<br/>"];
 
     NSString *html = [NSString stringWithFormat:
         @"<!DOCTYPE html>"
@@ -47,16 +49,22 @@
         @"</style>"
         @"</head>"
         @"<body>"
-        @"<div id='content'>%@</div>"
+        @"<div id='katex-content' style='display:none;'>%@</div>"
+        @"<div id='fallback-content'>%@</div>"
         @"<script>"
         @"  document.addEventListener('DOMContentLoaded', function() {"
         @"    if (typeof renderMathInElement !== 'undefined') {"
-        @"      renderMathInElement(document.body, {"
-        @"        delimiters: ["
-        @"          {left: '$$', right: '$$', display: true},"
-        @"          {left: '$', right: '$', display: false}"
-        @"        ]"
-        @"      });"
+        @"      try {"
+        @"        var el = document.getElementById('katex-content');"
+        @"        renderMathInElement(el, {"
+        @"          delimiters: ["
+        @"            {left: '$$', right: '$$', display: true},"
+        @"            {left: '$', right: '$', display: false}"
+        @"          ]"
+        @"        });"
+        @"        el.style.display = 'block';"
+        @"        document.getElementById('fallback-content').style.display = 'none';"
+        @"      } catch(e) {}"
         @"    }"
         @"    setTimeout(function() {"
         @"      window.location.hash = '#height=' + document.body.scrollHeight;"
@@ -64,7 +72,7 @@
         @"  });"
         @"</script>"
         @"</body>"
-        @"</html>", content ?: @""];
+        @"</html>", content ?: @"", escapedFallback];
 
     [_webView loadHTMLString:html baseURL:nil];
 }

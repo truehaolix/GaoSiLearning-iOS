@@ -3,6 +3,7 @@
 #import "GSCacheManager.h"
 #import "GSAPIClient.h"
 #import "GSOllamaClient.h"
+#import "GSMathFormatUtil.h"
 
 @interface GSOrganizeViewController () <UITableViewDelegate, UITableViewDataSource>
 @property (nonatomic, strong) UIView *headerView;
@@ -252,12 +253,12 @@
     tagSub.backgroundColor = [UIColor colorWithRed:0.12 green:0.53 blue:0.90 alpha:0.12];
     tagSub.textColor = [UIColor colorWithRed:0.12 green:0.53 blue:0.90 alpha:1.0];
 
-    lblKp.text = q.knowledgePoint ?: @"核心考点";
+    lblKp.text = [GSMathFormatUtil formatString:q.knowledgePoint ?: @"核心考点"];
     lblMastery.text = q.isMastered ? @"已掌握" : @"待复习";
     lblMastery.textColor = q.isMastered ? [UIColor colorWithRed:0.18 green:0.80 blue:0.44 alpha:1.0] : [UIColor colorWithRed:0.90 green:0.35 blue:0.25 alpha:1.0];
 
-    lblCause.text = [NSString stringWithFormat:@"错因：%@", q.mistakeCause ?: @"未归类"];
-    lblStem.text = q.questionText.length > 0 ? q.questionText : @"【试卷原题切片】";
+    lblCause.text = [NSString stringWithFormat:@"错因：%@", [GSMathFormatUtil formatString:q.mistakeCause ?: @"未归类"]];
+    lblStem.text = q.questionText.length > 0 ? [GSMathFormatUtil formatString:q.questionText] : @"【试卷原题切片】";
 
     return cell;
 }
@@ -454,7 +455,7 @@
         UILabel *kpBadge = [[UILabel alloc] initWithFrame:CGRectMake(134, innerY, screenW - 32 - 146, 22)];
         kpBadge.font = [UIFont systemFontOfSize:12];
         kpBadge.textColor = [UIColor colorWithRed:0.4 green:0.4 blue:0.4 alpha:1.0];
-        kpBadge.text = [NSString stringWithFormat:@"考点：%@", q.knowledgePoint ?: @"综合应用"];
+        kpBadge.text = [NSString stringWithFormat:@"考点：%@", [GSMathFormatUtil formatString:q.knowledgePoint ?: @"综合应用"]];
         [qCard addSubview:kpBadge];
 
         innerY += 30.0;
@@ -465,11 +466,11 @@
         stemLbl.textColor = [UIColor colorWithRed:0.15 green:0.15 blue:0.15 alpha:1.0];
         stemLbl.numberOfLines = 0;
         if (q.questionText.length > 0 && ![q.questionText hasSuffix:@"错题"]) {
-            stemLbl.text = q.questionText;
+            stemLbl.text = [GSMathFormatUtil formatString:q.questionText];
         } else if (q.sourceImageUri.length > 0) {
             stemLbl.text = @"【请根据下方试卷切片原题进行审题作答】";
         } else {
-            stemLbl.text = [NSString stringWithFormat:@"【%@ · 考点突破：%@】请根据考纲核心题型进行演算推导与解题。", q.subject ?: @"学科", q.knowledgePoint ?: @"核心考点"];
+            stemLbl.text = [NSString stringWithFormat:@"【%@ · 考点突破：%@】请根据考纲核心题型进行演算推导与解题。", q.subject ?: @"学科", [GSMathFormatUtil formatString:q.knowledgePoint ?: @"核心考点"]];
         }
         [stemLbl sizeToFit];
         stemLbl.frame = CGRectMake(14, innerY, screenW - 60, stemLbl.bounds.size.height);
@@ -596,14 +597,15 @@
     for (NSInteger i = 0; i < chosen.count; i++) {
         GSWrongQuestion *q = chosen[i];
         NSInteger num = i + 1;
-        [paper appendFormat:@"第 %ld 题（%@ · 考点：%@）\n", (long)num, q.subject ?: @"学科", q.knowledgePoint ?: @"综合应用"];
-        NSString *stem = (q.questionText.length > 0 && ![q.questionText hasSuffix:@"错题"]) ? q.questionText : @"【详见试卷原题切片】";
+        NSString *kpFormatted = [GSMathFormatUtil formatString:q.knowledgePoint ?: @"综合应用"];
+        [paper appendFormat:@"第 %ld 题（%@ · 考点：%@）\n", (long)num, q.subject ?: @"学科", kpFormatted];
+        NSString *stem = (q.questionText.length > 0 && ![q.questionText hasSuffix:@"错题"]) ? [GSMathFormatUtil formatString:q.questionText] : @"【详见试卷原题切片】";
         [paper appendFormat:@"%@\n\n", stem];
         [paper appendString:@"【解答与作答留白区】：\n\n\n\n\n"];
         [paper appendString:@"----------------------------------------------------\n"];
 
-        [answers appendFormat:@"第 %ld 题【核心考点】：%@\n", (long)num, q.knowledgePoint ?: @"核心概念"];
-        [answers appendFormat:@"【易错盲区分析】：%@\n", q.mistakeCause ?: @"审题不清 / 计算失误"];
+        [answers appendFormat:@"第 %ld 题【核心考点】：%@\n", (long)num, kpFormatted];
+        [answers appendFormat:@"【易错盲区分析】：%@\n", [GSMathFormatUtil formatString:q.mistakeCause ?: @"审题不清 / 计算失误"]];
         [answers appendString:@"【名师解析提示】：紧扣定理定义，规范书写步骤，检验极值条件。\n\n"];
     }
 
@@ -659,12 +661,13 @@
     [self presentViewController:loading animated:YES completion:^{
         [[GSOllamaClient sharedClient] requestKnowledgeClusteringForText:summary completion:^(NSString * _Nonnull report, NSString * _Nullable error) {
             [loading dismissViewControllerAnimated:YES completion:^{
+                NSString *formattedReport = [GSMathFormatUtil formatString:report];
                 UIAlertController *resAlert = [UIAlertController alertControllerWithTitle:@"✨ AI 错题考点全景聚类诊断报告"
-                                                                                  message:report
+                                                                                  message:formattedReport
                                                                            preferredStyle:UIAlertControllerStyleAlert];
 
                 [resAlert addAction:[UIAlertAction actionWithTitle:@"复制诊断报告" style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
-                    [UIPasteboard generalPasteboard].string = report;
+                    [UIPasteboard generalPasteboard].string = formattedReport;
                     [self showToast:@"诊断报告已复制到剪贴板"];
                 }]];
 

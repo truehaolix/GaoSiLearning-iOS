@@ -8,6 +8,7 @@
 #import "GSCacheManager.h"
 #import "GSCaptureSession.h"
 #import "GSModels.h"
+#import "GSMathFormatUtil.h"
 
 @interface GSWrongBookViewController () <UITableViewDelegate, UITableViewDataSource, UISearchBarDelegate, UIImagePickerControllerDelegate, UINavigationControllerDelegate>
 @property (nonatomic, strong) UISearchBar *searchBar;
@@ -540,10 +541,10 @@
         tagSubject.textColor = [UIColor colorWithRed:0.95 green:0.55 blue:0.10 alpha:1.0];
     }
 
-    lblKp.text = q.knowledgePoint.length > 0 ? q.knowledgePoint : @"核心重点考点";
-    lblStem.text = q.questionText.length > 0 ? q.questionText : @"暂无提取文字";
+    lblKp.text = [GSMathFormatUtil formatString:q.knowledgePoint.length > 0 ? q.knowledgePoint : @"核心重点考点"];
+    lblStem.text = [GSMathFormatUtil formatString:q.questionText.length > 0 ? q.questionText : @"暂无提取文字"];
     lblCause.text = [NSString stringWithFormat:@"错因：%@ · 遗忘周期：%@",
-                     (q.mistakeCause.length > 0 ? q.mistakeCause : @"思维定式偏差"),
+                     [GSMathFormatUtil formatString:q.mistakeCause.length > 0 ? q.mistakeCause : @"思维定式偏差"],
                      (q.nextReviewDate.length > 0 ? q.nextReviewDate : @"今日需复习")];
 
     if (q.isMastered) {
@@ -580,12 +581,13 @@
 
 - (void)showDetailForQuestion:(GSWrongQuestion *)q {
     NSString *statusStr = q.isMastered ? @"已掌握 ✓" : [NSString stringWithFormat:@"阶段 %ld (待复习)", (long)q.reviewStage];
+    NSString *formattedStem = q.questionText.length > 0 ? [GSMathFormatUtil formatString:q.questionText] : @"【暂无纯文本题干，可参考原始录入切图】";
     NSString *msg = [NSString stringWithFormat:@"【所属科目】%@\n【核心考点】%@\n【错因分析】%@\n【掌握状态】%@\n\n【题干内容】\n%@",
                      q.subject ?: @"全科",
-                     q.knowledgePoint ?: @"核心考点",
-                     q.mistakeCause ?: @"思维盲区",
+                     [GSMathFormatUtil formatString:q.knowledgePoint ?: @"核心考点"],
+                     [GSMathFormatUtil formatString:q.mistakeCause ?: @"思维盲区"],
                      statusStr,
-                     q.questionText.length > 0 ? q.questionText : @"【暂无纯文本题干，可参考原始录入切图】"];
+                     formattedStem];
 
     UIAlertController *alert = [UIAlertController alertControllerWithTitle:[NSString stringWithFormat:@"%@ · 错题详情", q.subject ?: @"错题"]
                                                                    message:msg
@@ -605,8 +607,10 @@
 }
 
 - (void)showActionMenuForQuestion:(GSWrongQuestion *)q {
+    NSString *formattedKp = [GSMathFormatUtil formatString:q.knowledgePoint ?: @"未分类"];
+    NSString *formattedCause = [GSMathFormatUtil formatString:q.mistakeCause ?: @"未归类"];
     UIAlertController *sheet = [UIAlertController alertControllerWithTitle:[NSString stringWithFormat:@"【%@】错题管理", q.subject ?: @"错题"]
-                                                                   message:[NSString stringWithFormat:@"考点：%@   错因：%@", q.knowledgePoint ?: @"未分类", q.mistakeCause ?: @"未归类"]
+                                                                   message:[NSString stringWithFormat:@"考点：%@   错因：%@", formattedKp, formattedCause]
                                                             preferredStyle:UIAlertControllerStyleActionSheet];
 
     [sheet addAction:[UIAlertAction actionWithTitle:@"💡 AI 名师解析" style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
@@ -703,12 +707,13 @@
         NSString *queryText = q.questionText.length > 0 ? q.questionText : q.knowledgePoint;
         [[GSOllamaClient sharedClient] requestStepByStepSolutionForText:queryText subject:q.subject knowledgePoint:q.knowledgePoint completion:^(NSString *solution, NSString * _Nullable error) {
             [loading dismissViewControllerAnimated:YES completion:^{
+                NSString *formattedSolution = [GSMathFormatUtil formatString:solution];
                 UIAlertController *resultAlert = [UIAlertController alertControllerWithTitle:@"💡 AI 名师解析 · Qwen 27B"
-                                                                                     message:solution
+                                                                                     message:formattedSolution
                                                                               preferredStyle:UIAlertControllerStyleAlert];
 
                 [resultAlert addAction:[UIAlertAction actionWithTitle:@"复制解析" style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
-                    [UIPasteboard generalPasteboard].string = solution;
+                    [UIPasteboard generalPasteboard].string = formattedSolution;
                     [self showToast:@"解析已复制到剪贴板"];
                 }]];
 

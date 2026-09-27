@@ -3,6 +3,7 @@
 #import "GSCaptureSession.h"
 #import "GSOllamaClient.h"
 #import "GSModels.h"
+#import "GSMathFormatUtil.h"
 
 @interface GSSimilarQuestionsViewController ()
 @property (nonatomic, strong) UIScrollView *scrollView;
@@ -190,7 +191,7 @@
         [optCard addSubview:badge];
 
         UILabel *txt = [[UILabel alloc] initWithFrame:CGRectMake(42, 6, cw - 52, 32)];
-        txt.text = opt.content;
+        txt.text = [GSMathFormatUtil formatString:opt.content];
         txt.font = [UIFont systemFontOfSize:14];
         txt.textColor = [UIColor colorWithRed:0.20 green:0.23 blue:0.27 alpha:1.0];
         [optCard addSubview:txt];
@@ -199,7 +200,8 @@
         oy += 52;
     }
 
-    _lblAnswer.text = [NSString stringWithFormat:@"参考答案：%@ (来源：%@ · 难度：%@)", q.answer, q.source ?: @"AI", q.difficulty ?: @"中等"];
+    NSString *formattedAnswer = [GSMathFormatUtil formatString:q.answer ?: @"略"];
+    _lblAnswer.text = [NSString stringWithFormat:@"参考答案：%@ (来源：%@ · 难度：%@)", formattedAnswer, q.source ?: @"AI", q.difficulty ?: @"中等"];
     [_analysisLatexView renderLaTeXContent:q.analysis];
 
     [self layoutAllCards];
