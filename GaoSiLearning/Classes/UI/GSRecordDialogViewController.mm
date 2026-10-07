@@ -265,11 +265,11 @@
             NSString *cause = [GSOllamaClient suggestMistakeCauseLocally:ocrText];
             self.tfMistakeCause.text = cause;
 
-            // 2. 异步发起 Qwen 27B 旗舰模型深度归因与变式生成
-            self.lblAiBadge.text = @"✨ Qwen 27B 分析中...";
+            // 2. 服务端 AI 网关未开放时，仅展示明确标记的本地规则结果。
+            self.lblAiBadge.text = @"本地规则分析中...";
             [[GSOllamaClient sharedClient] requestAiAnalysisForText:ocrText completion:^(GSAiAnalysisResult * _Nullable result, NSString * _Nullable error) {
                 if (result) {
-                    self.lblAiBadge.text = @"✨ 27B 归因完成";
+                    self.lblAiBadge.text = @"本地规则分析完成";
                     if (result.subject.length > 0) {
                         self.selectedSubject = result.subject;
                         [self updateSubjectSelectionUI];

@@ -9,21 +9,21 @@ typedef void(^GSAiAnalysisCompletion)(GSAiAnalysisResult * _Nullable result, NSS
 
 + (instancetype)sharedClient;
 
-/// 异步调用大模型进行深度解析与精准变式生成 (默认 Qwen 27B)
+/// 使用本地规则完成学科、考点、错因初判并生成基础练习。
 - (void)requestAiAnalysisForText:(NSString *)ocrText
                       completion:(GSAiAnalysisCompletion)completion;
 
-/// 异步调用 Qwen 27B 大模型生成名师步骤详解与易错避坑反思
+/// 生成明确标记的本地学习步骤提示。
 - (void)requestStepByStepSolutionForText:(NSString *)questionText
                                  subject:(NSString *)subject
                           knowledgePoint:(NSString *)knowledgePoint
                               completion:(void(^)(NSString *solution, NSString * _Nullable error))completion;
 
-/// 异步调用 Qwen 27B 大模型对全量错题进行 AI 考点聚类与薄弱项归类诊断
+/// 根据本地错题摘要生成整理建议。
 - (void)requestKnowledgeClusteringForText:(NSString *)summaryText
                                completion:(void(^)(NSString *report, NSString * _Nullable error))completion;
 
-/// 异步调用 Qwen 27B 大模型根据年级与错题薄弱点生成每日考点打卡内容与通关练习
+/// 根据年级与本地薄弱点生成端侧打卡模板。
 - (void)requestCheckInContentForGrade:(NSString *)grade
                       knowledgePoints:(NSArray<NSString *> *)kps
                            completion:(void(^)(NSDictionary * _Nullable data, NSString * _Nullable error))completion;

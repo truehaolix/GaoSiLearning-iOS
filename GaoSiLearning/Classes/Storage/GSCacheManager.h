@@ -7,7 +7,6 @@ NS_ASSUME_NONNULL_BEGIN
 @interface GSCacheManager : NSObject
 
 @property (nonatomic, copy) NSString *backendHost;
-@property (nonatomic, copy) NSString *ollamaHost;
 @property (nonatomic, strong, nullable) GSUser *currentUser;
 
 + (instancetype)sharedManager;

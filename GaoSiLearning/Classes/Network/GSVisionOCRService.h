@@ -9,7 +9,7 @@ typedef void(^GSOCRCompletion)(NSString *ocrText, BOOL isFormulaSuccess);
 
 + (instancetype)sharedService;
 
-/// 执行端云协同视觉公式 OCR (优先 MiniCPM-V 视觉大模型，支持 Apple Vision 离线兜底)
+/// 执行端云协同视觉公式 OCR（服务端能力开放时优先调用，失败时使用 Apple Vision 离线兜底）。
 - (void)recognizeQuestionTextFromImage:(UIImage *)image
                             completion:(GSOCRCompletion)completion;
 

@@ -8,8 +8,8 @@
 
 1. **用户认证与多角色登录 (`GSLoginViewController`)**
    - 响应式垂直居中 Material 质感卡片布局，自动处理 iOS 虚拟键盘升降遮挡。
-   - 支持「学生身份」与「教师身份」切换。
-   - 支持与服务端 (`http://112.46.82.154:4174`) 连通并持久化用户 Token。
+   - 使用培训系统手机号与密码登录，角色由服务端账号决定。
+   - 认证统一使用服务端 `session` HttpOnly Cookie，不保存密码，也不发送 Bearer Token。
 
 2. **错题本与艾宾浩斯复习管理 (`GSWrongBookViewController`)**
    - 顶部横向滚动学科胶囊栏（全部、数学、物理、化学、语文、英语、生物等）。
@@ -22,14 +22,13 @@
    - 纯 C++ 算法引擎 (`ImageProcessorCore::sauvolaBinarize`)：基于积分图的 Sauvola 局部自适应二值化算法，毫秒级检测试卷候选题目区域。
    - 交互式选框图层：绿色高亮已选题框（带「题 1 已选」标签），蓝色虚线未选题框，支持点击切换、拖拽调整选框、全选与清空。
 
-4. **端云协同多模态视觉 OCR + LaTeX 数学公式识别 (`GSVisionOCRService`)**
-   - **首选通道**：调用服务端 `/api/ai/ocr-question`，由 `openbmb/minicpm-o2.6:latest` 视觉大模型执行高精转写，输出标准 LaTeX 公式（`$...$` 与 `$$...$$`），分式、根号、向量箭头均精准保留。
-   - **离线兜底**：若处于离线环境或网络超时，无缝回退至 Apple 原生 `VNRecognizeTextRequest` 离线文字识别。
+4. **能力发现与本地 OCR (`GSVisionOCRService`)**
+   - 先读取服务端 `/api/mobile-capabilities`；只有服务端明确声明 OCR 可用时才调用云端接口。
+   - 后端已提供条件开放的 `/api/ai/ocr-question`：部署侧启用独立视觉应用后走 Cookie 会话网关；未启用、供应商失败或网络异常时使用 Apple 原生 `VNRecognizeTextRequest` 本地识别，不把本地结果冒充云端 AI 结果。
 
-5. **Qwen 27B 旗舰模型深度归因 (`GSOllamaClient`)**
-   - 题干提取完成后，自动触发 `qwen3.8:27b-bf16`（超时配置 180s）进行深度归因。
-   - 自动提炼核心学科、精确考点与学生思维盲区。
-   - 预生成针对该考点的**举一反三变式练习题**。
+5. **本地规则归因 (`GSOllamaClient`)**
+   - 客户端直连 Ollama 已关闭；服务端 AI 网关未开放前，只使用明确标记的本地规则结果。
+   - 相似题先按能力契约调用 `/api/questions/similar`，从当前机构题库检索；接口不可用时回退到明确标记的本地规则题目，不宣称模型生成。
 
 6. **变式题举一反三与 LaTeX 公式排版渲染 (`GSSimilarQuestionsViewController` + `GSLaTeXView`)**
    - 内置 WebKit + KaTeX 渲染引擎，题干、选项与解析中的数学公式与科学符号毫秒级矢量排版。

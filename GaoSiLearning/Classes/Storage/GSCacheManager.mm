@@ -1,10 +1,8 @@
 #import "GSCacheManager.h"
 
 static NSString * const kKeyBackendHost = @"gs_backend_host";
-static NSString * const kKeyOllamaHost  = @"gs_ollama_host";
 static NSString * const kKeyUserArchive = @"gs_current_user_archive";
 static NSString * const kDefaultBackend = @"http://112.46.82.154:4174";
-static NSString * const kDefaultOllama  = @"http://112.46.82.154:11434";
 
 @implementation GSCacheManager {
     NSString *_documentsPath;
@@ -38,7 +36,6 @@ static NSString * const kDefaultOllama  = @"http://112.46.82.154:11434";
 
         NSUserDefaults *ud = [NSUserDefaults standardUserDefaults];
         _backendHost = [ud stringForKey:kKeyBackendHost] ?: kDefaultBackend;
-        _ollamaHost = [ud stringForKey:kKeyOllamaHost] ?: kDefaultOllama;
 
         NSData *userData = [ud objectForKey:kKeyUserArchive];
         if (userData) {
@@ -55,14 +52,13 @@ static NSString * const kDefaultOllama  = @"http://112.46.82.154:11434";
     [[NSUserDefaults standardUserDefaults] synchronize];
 }
 
-- (void)setOllamaHost:(NSString *)ollamaHost {
-    _ollamaHost = [ollamaHost copy];
-    [[NSUserDefaults standardUserDefaults] setObject:_ollamaHost forKey:kKeyOllamaHost];
-    [[NSUserDefaults standardUserDefaults] synchronize];
-}
-
 - (BOOL)isLoggedIn {
-    return (self.currentUser != nil && self.currentUser.token.length > 0);
+    if (!self.currentUser) return NO;
+    NSURL *url = [NSURL URLWithString:self.backendHost];
+    for (NSHTTPCookie *cookie in [[NSHTTPCookieStorage sharedHTTPCookieStorage] cookiesForURL:url]) {
+        if ([cookie.name isEqualToString:@"session"] && cookie.value.length > 0) return YES;
+    }
+    return NO;
 }
 
 - (void)saveUser:(GSUser *)user {
@@ -79,6 +75,11 @@ static NSString * const kDefaultOllama  = @"http://112.46.82.154:11434";
 }
 
 - (void)logout {
+    NSURL *url = [NSURL URLWithString:self.backendHost];
+    NSHTTPCookieStorage *storage = [NSHTTPCookieStorage sharedHTTPCookieStorage];
+    for (NSHTTPCookie *cookie in [storage cookiesForURL:url]) {
+        if ([cookie.name isEqualToString:@"session"]) [storage deleteCookie:cookie];
+    }
     [self saveUser:nil];
 }
 
@@ -117,6 +118,12 @@ static NSString * const kDefaultOllama  = @"http://112.46.82.154:11434";
 - (void)addWrongQuestionLocally:(GSWrongQuestion *)question {
     @synchronized (self) {
         NSMutableArray<GSWrongQuestion *> *list = [[self loadLocalWrongQuestions] mutableCopy];
+        NSIndexSet *duplicates = [list indexesOfObjectsPassingTest:^BOOL(GSWrongQuestion *obj, NSUInteger idx, BOOL *stop) {
+            BOOL sameServerId = question.questionId.length > 0 && [obj.questionId isEqualToString:question.questionId];
+            BOOL sameClientId = question.clientItemId.length > 0 && [obj.clientItemId isEqualToString:question.clientItemId];
+            return sameServerId || sameClientId;
+        }];
+        [list removeObjectsAtIndexes:duplicates];
         [list insertObject:question atIndex:0];
         [self saveWrongQuestions:list];
     }
@@ -181,6 +188,11 @@ static NSString * const kDefaultOllama  = @"http://112.46.82.154:11434";
 - (void)addPendingSyncQuestion:(GSWrongQuestion *)question {
     @synchronized (self) {
         NSMutableArray<GSWrongQuestion *> *list = [[self loadPendingSyncQuestions] mutableCopy];
+        if (question.clientItemId.length > 0 && [list indexOfObjectPassingTest:^BOOL(GSWrongQuestion *obj, NSUInteger idx, BOOL *stop) {
+            return [obj.clientItemId isEqualToString:question.clientItemId];
+        }] != NSNotFound) {
+            return;
+        }
         [list addObject:question];
         NSMutableArray *arr = [NSMutableArray array];
         for (GSWrongQuestion *q in list) {

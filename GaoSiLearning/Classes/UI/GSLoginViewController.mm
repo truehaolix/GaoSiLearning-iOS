@@ -57,24 +57,24 @@
     [_cardView addSubview:lblTitle];
 
     UILabel *lblSub = [[UILabel alloc] init];
-    lblSub.text = @"智能视觉公式识别 · Qwen 27B 深度归因";
+    lblSub.text = @"端侧文字识别 · 错题归因与间隔复习";
     lblSub.font = [UIFont systemFontOfSize:13];
     lblSub.textColor = [UIColor colorWithRed:0.50 green:0.55 blue:0.60 alpha:1.0];
     lblSub.textAlignment = NSTextAlignmentCenter;
     [_cardView addSubview:lblSub];
 
     // 输入框
-    _tfUsername = [self createStyledTextFieldWithPlaceholder:@"请输入学号 / 用户名" isSecure:NO];
-    _tfUsername.text = @"student1";
+    _tfUsername = [self createStyledTextFieldWithPlaceholder:@"请输入培训系统手机号" isSecure:NO];
+    _tfUsername.keyboardType = UIKeyboardTypePhonePad;
     [_cardView addSubview:_tfUsername];
 
     _tfPassword = [self createStyledTextFieldWithPlaceholder:@"请输入密码" isSecure:YES];
-    _tfPassword.text = @"123456";
     [_cardView addSubview:_tfPassword];
 
     // 角色选择
-    _segRole = [[UISegmentedControl alloc] initWithItems:@[@"学生身份", @"教师身份"]];
+    _segRole = [[UISegmentedControl alloc] initWithItems:@[@"身份由服务端账号决定"]];
     _segRole.selectedSegmentIndex = 0;
+    _segRole.enabled = NO;
     [_cardView addSubview:_segRole];
 
     // 登录按钮
@@ -147,10 +147,10 @@
     [self dismissKeyboard];
     NSString *u = [_tfUsername.text stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
     NSString *p = [_tfPassword.text stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
-    NSString *role = (_segRole.selectedSegmentIndex == 0) ? @"student" : @"teacher";
+    NSString *role = @"";
 
     if (u.length == 0 || p.length == 0) {
-        [self showAlert:@"请输入用户名与密码"];
+        [self showAlert:@"请输入手机号与密码"];
         return;
     }
 

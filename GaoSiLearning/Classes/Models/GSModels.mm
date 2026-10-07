@@ -31,11 +31,11 @@
 + (instancetype)userFromDictionary:(NSDictionary *)dict {
     GSUser *user = [[GSUser alloc] init];
     user.userId = [NSString stringWithFormat:@"%@", dict[@"id"] ?: dict[@"userId"] ?: @""];
-    user.username = [NSString stringWithFormat:@"%@", dict[@"username"] ?: @""];
+    user.username = [NSString stringWithFormat:@"%@", dict[@"phone"] ?: dict[@"username"] ?: @""];
     user.name = [NSString stringWithFormat:@"%@", dict[@"name"] ?: user.username];
     user.role = [NSString stringWithFormat:@"%@", dict[@"role"] ?: @"student"];
     user.token = [NSString stringWithFormat:@"%@", dict[@"token"] ?: @""];
-    user.studentId = [NSString stringWithFormat:@"%@", dict[@"studentId"] ?: user.userId];
+    user.studentId = [NSString stringWithFormat:@"%@", dict[@"studentId"] ?: @""];
     return user;
 }
 
@@ -101,12 +101,12 @@
     q.subject = [NSString stringWithFormat:@"%@", dict[@"subject"] ?: @"数学"];
     q.knowledgePoint = [NSString stringWithFormat:@"%@", dict[@"knowledgePoint"] ?: @""];
     q.mistakeCause = [NSString stringWithFormat:@"%@", dict[@"mistakeCause"] ?: @""];
-    q.questionText = [NSString stringWithFormat:@"%@", dict[@"questionText"] ?: @""];
-    q.sourceImageUri = [NSString stringWithFormat:@"%@", dict[@"sourceImageUri"] ?: @""];
+    q.questionText = [NSString stringWithFormat:@"%@", dict[@"questionTitle"] ?: dict[@"questionText"] ?: @""];
+    q.sourceImageUri = [NSString stringWithFormat:@"%@", dict[@"imageUrl"] ?: dict[@"sourceImageUri"] ?: @""];
     q.clientItemId = [NSString stringWithFormat:@"%@", dict[@"clientItemId"] ?: @""];
     q.reviewStage = [dict[@"reviewStage"] respondsToSelector:@selector(integerValue)] ? [dict[@"reviewStage"] integerValue] : 0;
-    q.nextReviewDate = [NSString stringWithFormat:@"%@", dict[@"nextReviewDate"] ?: @""];
-    q.isMastered = [dict[@"isMastered"] boolValue];
+    q.nextReviewDate = [NSString stringWithFormat:@"%@", dict[@"nextReviewAt"] ?: dict[@"nextReviewDate"] ?: @""];
+    q.isMastered = [dict[@"isMastered"] boolValue] || [dict[@"mastery"] isEqualToString:@"已掌握"];
     q.reviewCount = [dict[@"reviewCount"] integerValue];
     q.createdAt = [NSString stringWithFormat:@"%@", dict[@"createdAt"] ?: @""];
     return q;
@@ -159,8 +159,8 @@
 
 + (instancetype)fromDictionary:(NSDictionary *)dict {
     GSQuestionOption *opt = [[GSQuestionOption alloc] init];
-    opt.key = [NSString stringWithFormat:@"%@", dict[@"key"] ?: @""];
-    opt.content = [NSString stringWithFormat:@"%@", dict[@"content"] ?: @""];
+    opt.key = [NSString stringWithFormat:@"%@", dict[@"key"] ?: dict[@"label"] ?: @""];
+    opt.content = [NSString stringWithFormat:@"%@", dict[@"content"] ?: dict[@"text"] ?: @""];
     return opt;
 }
 
@@ -197,7 +197,7 @@
         self.answer = [coder decodeObjectOfClass:[NSString class] forKey:@"answer"] ?: @"";
         self.analysis = [coder decodeObjectOfClass:[NSString class] forKey:@"analysis"] ?: @"";
         self.difficulty = [coder decodeObjectOfClass:[NSString class] forKey:@"difficulty"] ?: @"中等";
-        self.source = [coder decodeObjectOfClass:[NSString class] forKey:@"source"] ?: @"AI";
+        self.source = [coder decodeObjectOfClass:[NSString class] forKey:@"source"] ?: @"local_rule";
     }
     return self;
 }
@@ -207,9 +207,10 @@
     q.questionId = [NSString stringWithFormat:@"%@", dict[@"id"] ?: @""];
     q.stem = [NSString stringWithFormat:@"%@", dict[@"stem"] ?: @""];
     q.answer = [NSString stringWithFormat:@"%@", dict[@"answer"] ?: @""];
-    q.analysis = [NSString stringWithFormat:@"%@", dict[@"analysis"] ?: @""];
+    q.analysis = [NSString stringWithFormat:@"%@", dict[@"analysis"] ?: dict[@"explanation"] ?: @""];
     q.difficulty = [NSString stringWithFormat:@"%@", dict[@"difficulty"] ?: @"中等"];
-    q.source = [NSString stringWithFormat:@"%@", dict[@"source"] ?: @"AI"];
+    NSString *source = [NSString stringWithFormat:@"%@", dict[@"source"] ?: @"organization_question_bank"];
+    q.source = [source isEqualToString:@"organization_question_bank"] ? @"机构题库" : source;
 
     NSMutableArray<GSQuestionOption *> *opts = [NSMutableArray array];
     NSArray *rawOpts = dict[@"options"];
@@ -245,7 +246,7 @@
         @"answer": self.answer ?: @"",
         @"analysis": self.analysis ?: @"",
         @"difficulty": self.difficulty ?: @"中等",
-        @"source": self.source ?: @"AI"
+        @"source": self.source ?: @"local_rule"
     };
 }
 

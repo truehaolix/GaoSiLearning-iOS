@@ -6,6 +6,8 @@ NS_ASSUME_NONNULL_BEGIN
 typedef void(^GSLoginCompletion)(GSUser * _Nullable user, NSString * _Nullable error);
 typedef void(^GSQuestionsCompletion)(NSArray<GSWrongQuestion *> * _Nullable questions, NSString * _Nullable error);
 typedef void(^GSBatchUploadCompletion)(BOOL success, NSInteger uploadedCount, NSString * _Nullable error);
+typedef void(^GSSimilarQuestionsCompletion)(NSArray<GSSimilarQuestion *> * _Nullable questions, NSString * _Nullable error);
+FOUNDATION_EXPORT NSNotificationName const GSAuthenticationExpiredNotification;
 
 @interface GSAPIClient : NSObject
 
@@ -16,6 +18,9 @@ typedef void(^GSBatchUploadCompletion)(BOOL success, NSInteger uploadedCount, NS
                  password:(NSString *)password
                      role:(NSString *)role
                completion:(GSLoginCompletion)completion;
+
+/// 注销服务端 Cookie 会话并清理本地身份。
+- (void)logoutWithCompletion:(void(^)(void))completion;
 
 /// 查询错题列表 (支持学科过滤)
 - (void)fetchWrongQuestionsForStudent:(NSString *)studentId
@@ -44,6 +49,11 @@ typedef void(^GSBatchUploadCompletion)(BOOL success, NSInteger uploadedCount, NS
                mistakeCause:(nullable NSString *)mistakeCause
               questionTitle:(nullable NSString *)questionTitle
                  completion:(void(^)(BOOL success, NSString * _Nullable error))completion;
+
+/// 从当前机构题库检索同学科、相关知识点的已启用练习题。
+- (void)fetchSimilarQuestionsForSubject:(NSString *)subject
+                         knowledgePoint:(NSString *)knowledgePoint
+                              completion:(GSSimilarQuestionsCompletion)completion;
 
 @end
 

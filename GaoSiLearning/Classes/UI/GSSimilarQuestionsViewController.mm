@@ -2,6 +2,7 @@
 #import "GSLaTeXView.h"
 #import "GSCaptureSession.h"
 #import "GSOllamaClient.h"
+#import "GSAPIClient.h"
 #import "GSModels.h"
 #import "GSMathFormatUtil.h"
 
@@ -60,7 +61,7 @@
     // 换一批按钮
     _btnRefreshAi = [UIButton buttonWithType:UIButtonTypeCustom];
     _btnRefreshAi.backgroundColor = [UIColor colorWithRed:0.92 green:0.96 blue:1.0 alpha:1.0];
-    [_btnRefreshAi setTitle:@"✨ AI 换一批" forState:UIControlStateNormal];
+    [_btnRefreshAi setTitle:@"本地换一批" forState:UIControlStateNormal];
     _btnRefreshAi.titleLabel.font = [UIFont boldSystemFontOfSize:13];
     [_btnRefreshAi setTitleColor:[UIColor colorWithRed:0.12 green:0.53 blue:0.90 alpha:1.0] forState:UIControlStateNormal];
     _btnRefreshAi.layer.cornerRadius = 6;
@@ -201,7 +202,7 @@
     }
 
     NSString *formattedAnswer = [GSMathFormatUtil formatString:q.answer ?: @"略"];
-    _lblAnswer.text = [NSString stringWithFormat:@"参考答案：%@ (来源：%@ · 难度：%@)", formattedAnswer, q.source ?: @"AI", q.difficulty ?: @"中等"];
+    _lblAnswer.text = [NSString stringWithFormat:@"参考答案：%@ (来源：%@ · 难度：%@)", formattedAnswer, q.source ?: @"本地题库", q.difficulty ?: @"中等"];
     [_analysisLatexView renderLaTeXContent:q.analysis];
 
     [self layoutAllCards];
@@ -223,14 +224,28 @@
     [_spinner startAnimating];
     _btnRefreshAi.enabled = NO;
 
-    NSString *promptText = [NSString stringWithFormat:@"关于%@学科中%@考点的基础题与变式题", self.subject ?: @"数学", self.knowledgePoint ?: @"核心考点"];
-    [[GSOllamaClient sharedClient] requestAiAnalysisForText:promptText completion:^(GSAiAnalysisResult * _Nullable result, NSString * _Nullable error) {
-        [self.spinner stopAnimating];
-        self.btnRefreshAi.enabled = YES;
-
-        if (result.similarQuestions.count > 0) {
-            [self displayQuestion:result.similarQuestions.firstObject];
+    [[GSAPIClient sharedClient] fetchSimilarQuestionsForSubject:self.subject ?: @"数学"
+                                                knowledgePoint:self.knowledgePoint ?: @"核心考点"
+                                                     completion:^(NSArray<GSSimilarQuestion *> * _Nullable questions, NSString * _Nullable error) {
+        if (questions.count > 0) {
+            [GSCaptureSession sharedSession].aiSimilarQuestions = [questions mutableCopy];
+            [self.spinner stopAnimating];
+            self.btnRefreshAi.enabled = YES;
+            [self displayQuestion:questions.firstObject];
+            return;
         }
+        if ([error containsString:@"登录会话已失效"]) {
+            [self.spinner stopAnimating];
+            self.btnRefreshAi.enabled = YES;
+            return;
+        }
+        NSString *promptText = [NSString stringWithFormat:@"关于%@学科中%@考点的基础题与变式题", self.subject ?: @"数学", self.knowledgePoint ?: @"核心考点"];
+        [[GSOllamaClient sharedClient] requestAiAnalysisForText:promptText completion:^(GSAiAnalysisResult * _Nullable result, NSString * _Nullable localError) {
+            [self.spinner stopAnimating];
+            self.btnRefreshAi.enabled = YES;
+            if (result.similarQuestions.count > 0) [self displayQuestion:result.similarQuestions.firstObject];
+            (void)localError;
+        }];
     }];
 }
 

@@ -137,7 +137,7 @@ static NSString *const kPrefCheckInHistory = @"GS_CHECKIN_HISTORY_DATES";
     _lblLoadingTip.textColor = [UIColor grayColor];
     _lblLoadingTip.font = [UIFont systemFontOfSize:13];
     _lblLoadingTip.textAlignment = NSTextAlignmentCenter;
-    _lblLoadingTip.text = @"Qwen 大模型正在结合错题考点生成打卡内容...";
+    _lblLoadingTip.text = @"正在根据错题考点整理本地打卡内容...";
     _lblLoadingTip.hidden = YES;
     [_scrollView addSubview:_lblLoadingTip];
 

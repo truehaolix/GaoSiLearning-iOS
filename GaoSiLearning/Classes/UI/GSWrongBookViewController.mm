@@ -1,4 +1,5 @@
 #import "GSWrongBookViewController.h"
+#import "GSLoginViewController.h"
 #import "GSQuestionSelectViewController.h"
 #import "GSSimilarQuestionsViewController.h"
 #import "GSOrganizeViewController.h"
@@ -62,7 +63,15 @@
 
     [self setupNavigationItems];
     [self setupUI];
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(handleAuthenticationExpired)
+                                                 name:GSAuthenticationExpiredNotification
+                                               object:nil];
     [self loadQuestions];
+}
+
+- (void)dealloc {
+    [[NSNotificationCenter defaultCenter] removeObserver:self];
 }
 
 - (void)viewWillAppear:(BOOL)animated {
@@ -593,7 +602,7 @@
                                                                    message:msg
                                                             preferredStyle:UIAlertControllerStyleAlert];
 
-    [alert addAction:[UIAlertAction actionWithTitle:@"💡 AI 名师解析" style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
+    [alert addAction:[UIAlertAction actionWithTitle:@"💡 学习提示" style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
         [self showAnalysisForQuestion:q];
     }]];
 
@@ -613,7 +622,7 @@
                                                                    message:[NSString stringWithFormat:@"考点：%@   错因：%@", formattedKp, formattedCause]
                                                             preferredStyle:UIAlertControllerStyleActionSheet];
 
-    [sheet addAction:[UIAlertAction actionWithTitle:@"💡 AI 名师解析" style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
+    [sheet addAction:[UIAlertAction actionWithTitle:@"💡 学习提示" style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
         [self showAnalysisForQuestion:q];
     }]];
 
@@ -646,15 +655,15 @@
                                                             preferredStyle:UIAlertControllerStyleAlert];
 
     [alert addAction:[UIAlertAction actionWithTitle:@"删除" style:UIAlertActionStyleDestructive handler:^(UIAlertAction * _Nonnull action) {
-        [[GSCacheManager sharedManager] deleteWrongQuestionLocally:q.questionId];
         [[GSAPIClient sharedClient] deleteWrongQuestion:q.questionId completion:^(BOOL success, NSString * _Nullable error) {
-            dispatch_async(dispatch_get_main_queue(), ^{
-                if (success) {
-                    [self showToast:@"错题已删除"];
-                }
-            });
+            if (success) {
+                [[GSCacheManager sharedManager] deleteWrongQuestionLocally:q.questionId];
+                [self showToast:@"错题已删除"];
+                [self loadQuestions];
+            } else {
+                [self showToast:error ?: @"删除失败"];
+            }
         }];
-        [self loadQuestions];
     }]];
 
     [alert addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
@@ -686,13 +695,15 @@
         NSString *newCause = alert.textFields[1].text;
         NSString *newStem = alert.textFields[2].text;
 
-        [[GSCacheManager sharedManager] updateWrongQuestionLocally:q.questionId subject:nil knowledgePoint:newKp mistakeCause:newCause questionText:newStem];
         [[GSAPIClient sharedClient] updateWrongQuestion:q.questionId subject:nil knowledgePoint:newKp mistakeCause:newCause questionTitle:newStem completion:^(BOOL success, NSString * _Nullable error) {
-            dispatch_async(dispatch_get_main_queue(), ^{
-                [self showToast:success ? @"错题修改已保存" : @"修改已存至本地离线"];
-            });
+            if (success) {
+                [[GSCacheManager sharedManager] updateWrongQuestionLocally:q.questionId subject:nil knowledgePoint:newKp mistakeCause:newCause questionText:newStem];
+                [self showToast:@"错题修改已保存"];
+                [self loadQuestions];
+            } else {
+                [self showToast:error ?: @"修改失败"];
+            }
         }];
-        [self loadQuestions];
     }]];
 
     [alert addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
@@ -700,15 +711,15 @@
 }
 
 - (void)showAnalysisForQuestion:(GSWrongQuestion *)q {
-    UIAlertController *loading = [UIAlertController alertControllerWithTitle:@"💡 AI 名师解析"
-                                                                     message:@"正在调用 Qwen 27B 大模型生成分步精解与易错避坑剖析...\n请稍候..."
+    UIAlertController *loading = [UIAlertController alertControllerWithTitle:@"💡 本地学习提示"
+                                                                     message:@"正在根据题干和知识点整理审题、列式与检查建议..."
                                                               preferredStyle:UIAlertControllerStyleAlert];
     [self presentViewController:loading animated:YES completion:^{
         NSString *queryText = q.questionText.length > 0 ? q.questionText : q.knowledgePoint;
         [[GSOllamaClient sharedClient] requestStepByStepSolutionForText:queryText subject:q.subject knowledgePoint:q.knowledgePoint completion:^(NSString *solution, NSString * _Nullable error) {
             [loading dismissViewControllerAnimated:YES completion:^{
                 NSString *formattedSolution = [GSMathFormatUtil formatString:solution];
-                UIAlertController *resultAlert = [UIAlertController alertControllerWithTitle:@"💡 AI 名师解析 · Qwen 27B"
+                UIAlertController *resultAlert = [UIAlertController alertControllerWithTitle:@"💡 本地学习提示"
                                                                                      message:formattedSolution
                                                                               preferredStyle:UIAlertControllerStyleAlert];
 
@@ -739,13 +750,15 @@
     NSArray *allSubs = @[@"数学", @"物理", @"化学", @"语文", @"英语", @"生物", @"历史", @"地理", @"政治"];
     for (NSString *sub in allSubs) {
         [sheet addAction:[UIAlertAction actionWithTitle:sub style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
-            [[GSCacheManager sharedManager] updateWrongQuestionLocally:q.questionId subject:sub knowledgePoint:nil mistakeCause:nil questionText:nil];
             [[GSAPIClient sharedClient] updateWrongQuestion:q.questionId subject:sub knowledgePoint:nil mistakeCause:nil questionTitle:nil completion:^(BOOL success, NSString * _Nullable error) {
-                dispatch_async(dispatch_get_main_queue(), ^{
+                if (success) {
+                    [[GSCacheManager sharedManager] updateWrongQuestionLocally:q.questionId subject:sub knowledgePoint:nil mistakeCause:nil questionText:nil];
                     [self showToast:[NSString stringWithFormat:@"已成功移入「%@」", sub]];
-                });
+                    [self loadQuestions];
+                } else {
+                    [self showToast:error ?: @"移动失败"];
+                }
             }];
-            [self loadQuestions];
         }]];
     }
 
@@ -802,7 +815,7 @@
     }
     NSString *stuId = [GSCacheManager sharedManager].currentUser.studentId ?: @"1";
     [[GSAPIClient sharedClient] batchSubmitWrongQuestions:pending studentId:stuId completion:^(BOOL success, NSInteger uploadedCount, NSString * _Nullable error) {
-        if (success) {
+        if (success && error.length == 0) {
             [[GSCacheManager sharedManager] clearPendingSyncQuestions];
             [self showToast:[NSString stringWithFormat:@"成功同步 %ld 道离线错题", (long)uploadedCount]];
             [self loadQuestions];
@@ -813,8 +826,39 @@
 }
 
 - (void)handleLogout {
-    [[GSCacheManager sharedManager] logout];
-    [self dismissViewControllerAnimated:YES completion:nil];
+    [[GSAPIClient sharedClient] logoutWithCompletion:^{
+        [self showLoginScreen];
+    }];
+}
+
+- (void)handleAuthenticationExpired {
+    [self showLoginScreen];
+}
+
+- (void)showLoginScreen {
+    UIViewController *presentedContainer = self.navigationController ?: self;
+    if (presentedContainer.presentingViewController) {
+        [presentedContainer dismissViewControllerAnimated:YES completion:nil];
+        return;
+    }
+
+    UIWindow *window = self.view.window;
+    if (!window) {
+        for (UIScene *scene in UIApplication.sharedApplication.connectedScenes) {
+            if (scene.activationState != UISceneActivationStateUnattached && [scene isKindOfClass:[UIWindowScene class]]) {
+                window = ((UIWindowScene *)scene).windows.firstObject;
+                if (window) break;
+            }
+        }
+    }
+    if (!window) return;
+    GSLoginViewController *loginVC = [[GSLoginViewController alloc] init];
+    UINavigationController *navigationController = [[UINavigationController alloc] initWithRootViewController:loginVC];
+    [UIView transitionWithView:window
+                      duration:0.25
+                       options:UIViewAnimationOptionTransitionCrossDissolve
+                    animations:^{ window.rootViewController = navigationController; }
+                    completion:nil];
 }
 
 - (void)showToast:(NSString *)msg {

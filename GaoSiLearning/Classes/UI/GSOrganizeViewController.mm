@@ -16,6 +16,9 @@
 
 @property (nonatomic, strong) NSArray<GSWrongQuestion *> *allQuestions;
 @property (nonatomic, strong) NSMutableSet<NSString *> *selectedIds;
+- (void)handleExportPracticePaper;
+- (void)handleBatchDelete;
+- (void)showToast:(NSString *)msg;
 @end
 
 @implementation GSOrganizeViewController
@@ -34,7 +37,7 @@
 }
 
 - (void)setupNavigationItems {
-    UIBarButtonItem *btnAi = [[UIBarButtonItem alloc] initWithTitle:@"AI 考点聚类"
+    UIBarButtonItem *btnAi = [[UIBarButtonItem alloc] initWithTitle:@"考点整理"
                                                               style:UIBarButtonItemStylePlain
                                                              target:self
                                                              action:@selector(handleAiClustering)];
@@ -299,13 +302,27 @@
     NSArray *subs = @[@"数学", @"物理", @"化学", @"语文", @"英语", @"生物", @"历史", @"地理", @"政治"];
     for (NSString *sub in subs) {
         [sheet addAction:[UIAlertAction actionWithTitle:sub style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
-            for (NSString *qid in self.selectedIds) {
-                [[GSCacheManager sharedManager] updateWrongQuestionLocally:qid subject:sub knowledgePoint:nil mistakeCause:nil questionText:nil];
-                [[GSAPIClient sharedClient] updateWrongQuestion:qid subject:sub knowledgePoint:nil mistakeCause:nil questionTitle:nil completion:nil];
+            NSArray<NSString *> *questionIds = self.selectedIds.allObjects;
+            dispatch_group_t group = dispatch_group_create();
+            NSMutableArray<NSString *> *successfulIds = [NSMutableArray array];
+            for (NSString *qid in questionIds) {
+                dispatch_group_enter(group);
+                [[GSAPIClient sharedClient] updateWrongQuestion:qid subject:sub knowledgePoint:nil mistakeCause:nil questionTitle:nil completion:^(BOOL success, NSString * _Nullable error) {
+                    if (success) {
+                        [[GSCacheManager sharedManager] updateWrongQuestionLocally:qid subject:sub knowledgePoint:nil mistakeCause:nil questionText:nil];
+                        [successfulIds addObject:qid];
+                    }
+                    dispatch_group_leave(group);
+                }];
             }
-            [self.selectedIds removeAllObjects];
-            [self loadData];
-            [self showToast:[NSString stringWithFormat:@"已成功批量移入「%@」", sub]];
+            dispatch_group_notify(group, dispatch_get_main_queue(), ^{
+                for (NSString *qid in successfulIds) [self.selectedIds removeObject:qid];
+                [self loadData];
+                NSString *message = successfulIds.count == questionIds.count
+                    ? [NSString stringWithFormat:@"已成功批量移入「%@」", sub]
+                    : [NSString stringWithFormat:@"已移动 %lu/%lu 道，失败项保留选中可重试", (unsigned long)successfulIds.count, (unsigned long)questionIds.count];
+                [self showToast:message];
+            });
         }]];
     }
     [sheet addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
@@ -335,6 +352,8 @@
     [alert addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
     [self presentViewController:alert animated:YES completion:nil];
 }
+
+@end
 
 @interface GSPaperPreviewViewController : UIViewController
 @property (nonatomic, strong) NSArray<GSWrongQuestion *> *questions;
@@ -563,6 +582,8 @@
 
 @end
 
+@implementation GSOrganizeViewController (PaperActions)
+
 // 3. 组卷导出
 - (void)handleExportPracticePaper {
     NSMutableArray<GSWrongQuestion *> *chosen = [NSMutableArray array];
@@ -627,24 +648,37 @@
                                                             preferredStyle:UIAlertControllerStyleAlert];
 
     [alert addAction:[UIAlertAction actionWithTitle:@"删除" style:UIAlertActionStyleDestructive handler:^(UIAlertAction * _Nonnull action) {
-        for (NSString *qid in self.selectedIds) {
-            [[GSCacheManager sharedManager] deleteWrongQuestionLocally:qid];
-            [[GSAPIClient sharedClient] deleteWrongQuestion:qid completion:nil];
+        NSArray<NSString *> *questionIds = self.selectedIds.allObjects;
+        dispatch_group_t group = dispatch_group_create();
+        NSMutableArray<NSString *> *successfulIds = [NSMutableArray array];
+        for (NSString *qid in questionIds) {
+            dispatch_group_enter(group);
+            [[GSAPIClient sharedClient] deleteWrongQuestion:qid completion:^(BOOL success, NSString * _Nullable error) {
+                if (success) {
+                    [[GSCacheManager sharedManager] deleteWrongQuestionLocally:qid];
+                    [successfulIds addObject:qid];
+                }
+                dispatch_group_leave(group);
+            }];
         }
-        NSUInteger count = self.selectedIds.count;
-        [self.selectedIds removeAllObjects];
-        [self loadData];
-        [self showToast:[NSString stringWithFormat:@"已批量删除 %lu 道错题", (unsigned long)count]];
+        dispatch_group_notify(group, dispatch_get_main_queue(), ^{
+            for (NSString *qid in successfulIds) [self.selectedIds removeObject:qid];
+            [self loadData];
+            NSString *message = successfulIds.count == questionIds.count
+                ? [NSString stringWithFormat:@"已批量删除 %lu 道错题", (unsigned long)successfulIds.count]
+                : [NSString stringWithFormat:@"已删除 %lu/%lu 道，失败项保留选中可重试", (unsigned long)successfulIds.count, (unsigned long)questionIds.count];
+            [self showToast:message];
+        });
     }]];
 
     [alert addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
     [self presentViewController:alert animated:YES completion:nil];
 }
 
-// 5. AI 考点聚类
+// 5. 本地考点整理
 - (void)handleAiClustering {
     if (self.allQuestions.count == 0) {
-        [self showToast:@"当前题库无错题，无法开展 AI 考点聚类"];
+        [self showToast:@"当前题库无错题，无法开展考点整理"];
         return;
     }
 
@@ -654,15 +688,15 @@
         [summary appendFormat:@"%ld. [%@] 考点：%@ | 错因：%@\n", (long)(i + 1), q.subject ?: @"学科", q.knowledgePoint ?: @"重点", q.mistakeCause ?: @"未归类"];
     }
 
-    UIAlertController *loading = [UIAlertController alertControllerWithTitle:@"🤖 AI 考点聚类诊断中"
-                                                                     message:@"正在调用 Qwen 27B 大模型对全部错题进行智能归纳与薄弱盲区深度聚类...\n请稍候..."
+    UIAlertController *loading = [UIAlertController alertControllerWithTitle:@"错题考点整理中"
+                                                                     message:@"正在根据本地错题的学科、考点和错因整理薄弱项..."
                                                               preferredStyle:UIAlertControllerStyleAlert];
 
     [self presentViewController:loading animated:YES completion:^{
         [[GSOllamaClient sharedClient] requestKnowledgeClusteringForText:summary completion:^(NSString * _Nonnull report, NSString * _Nullable error) {
             [loading dismissViewControllerAnimated:YES completion:^{
                 NSString *formattedReport = [GSMathFormatUtil formatString:report];
-                UIAlertController *resAlert = [UIAlertController alertControllerWithTitle:@"✨ AI 错题考点全景聚类诊断报告"
+                UIAlertController *resAlert = [UIAlertController alertControllerWithTitle:@"错题考点整理建议"
                                                                                   message:formattedReport
                                                                            preferredStyle:UIAlertControllerStyleAlert];
 
