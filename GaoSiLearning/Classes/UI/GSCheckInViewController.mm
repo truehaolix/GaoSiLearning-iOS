@@ -216,7 +216,7 @@ static NSString *const kPrefCheckInHistory = @"GS_CHECKIN_HISTORY_DATES";
     [self.view addSubview:bottomBar];
 
     _btnComplete = [UIButton buttonWithType:UIButtonTypeCustom];
-    _btnComplete.frame = CGRectMake(16, 12, screenW - 32, 48)];
+    _btnComplete.frame = CGRectMake(16, 12, screenW - 32, 48);
     _btnComplete.backgroundColor = [UIColor colorWithRed:0.18 green:0.50 blue:0.93 alpha:1.0];
     _btnComplete.layer.cornerRadius = 10.0;
     [_btnComplete setTitle:@"完成今日打卡 (+1 天)" forState:UIControlStateNormal];
@@ -423,7 +423,7 @@ static NSString *const kPrefCheckInHistory = @"GS_CHECKIN_HISTORY_DATES";
 
             NSString *optLetter = (optIdx == 0 ? @"A" : (optIdx == 1 ? @"B" : (optIdx == 2 ? @"C" : @"D")));
 
-            __weak typeof(self) weakSelf = self;
+            __weak GSCheckInViewController *weakSelf = self;
             [btn addAction:[UIAction actionWithHandler:^(__kindof UIAction * _Nonnull action) {
                 for (UIButton *b in optButtons) {
                     b.userInteractionEnabled = NO;
