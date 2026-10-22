@@ -7,6 +7,7 @@ typedef void(^GSLoginCompletion)(GSUser * _Nullable user, NSString * _Nullable e
 typedef void(^GSQuestionsCompletion)(NSArray<GSWrongQuestion *> * _Nullable questions, NSString * _Nullable error);
 typedef void(^GSBatchUploadCompletion)(BOOL success, NSInteger uploadedCount, NSString * _Nullable error);
 typedef void(^GSSimilarQuestionsCompletion)(NSArray<GSSimilarQuestion *> * _Nullable questions, NSString * _Nullable error);
+typedef void(^GSLearningToolsCompletion)(NSArray<NSDictionary *> * _Nullable tools, NSString * _Nullable error);
 FOUNDATION_EXPORT NSNotificationName const GSAuthenticationExpiredNotification;
 
 @interface GSAPIClient : NSObject
@@ -54,6 +55,13 @@ FOUNDATION_EXPORT NSNotificationName const GSAuthenticationExpiredNotification;
 - (void)fetchSimilarQuestionsForSubject:(NSString *)subject
                          knowledgePoint:(NSString *)knowledgePoint
                               completion:(GSSimilarQuestionsCompletion)completion;
+
+/// 获取服务端白名单中的教学工具目录。
+- (void)fetchLearningToolsWithCompletion:(GSLearningToolsCompletion)completion;
+
+/// 审计一次工具启动并返回获准的外部 HTTPS 地址。
+- (void)launchLearningToolWithId:(NSString *)toolId
+                      completion:(void(^)(NSURL * _Nullable url, NSString * _Nullable error))completion;
 
 @end
 

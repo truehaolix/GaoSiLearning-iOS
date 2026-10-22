@@ -11,6 +11,122 @@
 #import "GSModels.h"
 #import "GSMathFormatUtil.h"
 
+@interface GSLearningToolsViewController : UITableViewController <UISearchResultsUpdating>
+@property (nonatomic, strong) NSArray<NSDictionary *> *tools;
+@property (nonatomic, strong) NSArray<NSDictionary *> *filteredTools;
+@property (nonatomic, strong) UISearchController *searchController;
+@end
+
+@implementation GSLearningToolsViewController
+
+- (void)viewDidLoad {
+    [super viewDidLoad];
+    self.title = @"教学工具与互动实验";
+    self.tools = @[];
+    self.filteredTools = @[];
+    self.tableView.rowHeight = UITableViewAutomaticDimension;
+    self.tableView.estimatedRowHeight = 92.0;
+    self.tableView.backgroundColor = [UIColor colorWithRed:0.96 green:0.97 blue:0.98 alpha:1.0];
+    self.searchController = [[UISearchController alloc] initWithSearchResultsController:nil];
+    self.searchController.obscuresBackgroundDuringPresentation = NO;
+    self.searchController.searchResultsUpdater = self;
+    self.searchController.searchBar.placeholder = @"搜索名称、学科或知识点";
+    self.navigationItem.searchController = self.searchController;
+    self.navigationItem.hidesSearchBarWhenScrolling = NO;
+    self.definesPresentationContext = YES;
+    [self loadTools];
+}
+
+- (void)loadTools {
+    UIActivityIndicatorView *spinner = [[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleMedium];
+    [spinner startAnimating];
+    self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc] initWithCustomView:spinner];
+    [[GSAPIClient sharedClient] fetchLearningToolsWithCompletion:^(NSArray<NSDictionary *> * _Nullable tools, NSString * _Nullable error) {
+        self.navigationItem.rightBarButtonItem = nil;
+        if (error.length > 0) {
+            [self showError:error];
+            return;
+        }
+        self.tools = tools ?: @[];
+        [self updateSearchResultsForSearchController:self.searchController];
+    }];
+}
+
+- (void)updateSearchResultsForSearchController:(UISearchController *)searchController {
+    NSString *query = [searchController.searchBar.text stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+    if (query.length == 0) {
+        self.filteredTools = self.tools;
+    } else {
+        self.filteredTools = [self.tools filteredArrayUsingPredicate:[NSPredicate predicateWithBlock:^BOOL(NSDictionary *tool, NSDictionary *bindings) {
+            NSMutableArray<NSString *> *parts = [NSMutableArray array];
+            for (id value in @[tool[@"title"] ?: @"", tool[@"description"] ?: @"", tool[@"providerName"] ?: @""]) {
+                if ([value isKindOfClass:[NSString class]]) [parts addObject:value];
+            }
+            for (NSString *key in @[@"subjects", @"gradeBands", @"knowledgePoints", @"scenarios"]) {
+                NSArray *values = [tool[key] isKindOfClass:[NSArray class]] ? tool[key] : @[];
+                for (id value in values) if ([value isKindOfClass:[NSString class]]) [parts addObject:value];
+            }
+            return [[parts componentsJoinedByString:@" "] localizedCaseInsensitiveContainsString:query];
+        }]];
+    }
+    self.tableView.backgroundView = self.filteredTools.count == 0 ? [self emptyLabel] : nil;
+    [self.tableView reloadData];
+}
+
+- (UILabel *)emptyLabel {
+    UILabel *label = [[UILabel alloc] initWithFrame:self.tableView.bounds];
+    label.text = self.tools.count == 0 ? @"暂无可用教学工具" : @"没有匹配的教学工具";
+    label.textAlignment = NSTextAlignmentCenter;
+    label.textColor = [UIColor secondaryLabelColor];
+    return label;
+}
+
+- (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
+    return self.filteredTools.count;
+}
+
+- (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
+    static NSString *identifier = @"LearningToolCell";
+    UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:identifier];
+    if (!cell) cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:identifier];
+    NSDictionary *tool = self.filteredTools[indexPath.row];
+    cell.textLabel.text = [tool[@"title"] isKindOfClass:[NSString class]] ? tool[@"title"] : @"教学工具";
+    cell.textLabel.font = [UIFont systemFontOfSize:16 weight:UIFontWeightSemibold];
+    NSArray *subjects = [tool[@"subjects"] isKindOfClass:[NSArray class]] ? tool[@"subjects"] : @[];
+    NSArray *grades = [tool[@"gradeBands"] isKindOfClass:[NSArray class]] ? tool[@"gradeBands"] : @[];
+    NSString *provider = [tool[@"providerName"] isKindOfClass:[NSString class]] ? tool[@"providerName"] : @"外部工具";
+    cell.detailTextLabel.text = [NSString stringWithFormat:@"%@ · %@\n%@", provider, [[subjects arrayByAddingObjectsFromArray:grades] componentsJoinedByString:@" · "], tool[@"description"] ?: @""];
+    cell.detailTextLabel.numberOfLines = 3;
+    cell.detailTextLabel.textColor = [UIColor secondaryLabelColor];
+    cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
+    cell.backgroundColor = UIColor.whiteColor;
+    return cell;
+}
+
+- (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
+    [tableView deselectRowAtIndexPath:indexPath animated:YES];
+    NSDictionary *tool = self.filteredTools[indexPath.row];
+    NSString *toolId = [tool[@"id"] isKindOfClass:[NSString class]] ? tool[@"id"] : @"";
+    if (toolId.length == 0) return;
+    [[GSAPIClient sharedClient] launchLearningToolWithId:toolId completion:^(NSURL * _Nullable url, NSString * _Nullable error) {
+        if (error.length > 0 || !url) {
+            [self showError:error ?: @"工具打开失败"];
+            return;
+        }
+        [UIApplication.sharedApplication openURL:url options:@{} completionHandler:^(BOOL success) {
+            if (!success) [self showError:@"没有可打开该网页的浏览器"];
+        }];
+    }];
+}
+
+- (void)showError:(NSString *)message {
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"教学工具" message:message preferredStyle:UIAlertControllerStyleAlert];
+    [alert addAction:[UIAlertAction actionWithTitle:@"确定" style:UIAlertActionStyleDefault handler:nil]];
+    [self presentViewController:alert animated:YES completion:nil];
+}
+
+@end
+
 @interface GSWrongBookViewController () <UITableViewDelegate, UITableViewDataSource, UISearchBarDelegate, UIImagePickerControllerDelegate, UINavigationControllerDelegate>
 @property (nonatomic, strong) UISearchBar *searchBar;
 @property (nonatomic, strong) UIScrollView *subjectScrollView;
@@ -80,13 +196,19 @@
 }
 
 - (void)setupNavigationItems {
+    UIBarButtonItem *btnTools = [[UIBarButtonItem alloc] initWithTitle:@"工具" style:UIBarButtonItemStylePlain target:self action:@selector(handleOpenTools)];
     UIBarButtonItem *btnSync = [[UIBarButtonItem alloc] initWithTitle:@"同步" style:UIBarButtonItemStylePlain target:self action:@selector(handleManualSync)];
     UIBarButtonItem *btnOrganize = [[UIBarButtonItem alloc] initWithTitle:@"整理" style:UIBarButtonItemStylePlain target:self action:@selector(handleOpenOrganize)];
     UIBarButtonItem *btnCheckIn = [[UIBarButtonItem alloc] initWithTitle:@"打卡" style:UIBarButtonItemStylePlain target:self action:@selector(handleOpenCheckIn)];
-    self.navigationItem.rightBarButtonItems = @[btnOrganize, btnCheckIn, btnSync];
+    self.navigationItem.rightBarButtonItems = @[btnTools, btnOrganize, btnCheckIn, btnSync];
 
     UIBarButtonItem *btnLogout = [[UIBarButtonItem alloc] initWithTitle:@"退出" style:UIBarButtonItemStylePlain target:self action:@selector(handleLogout)];
     self.navigationItem.leftBarButtonItem = btnLogout;
+}
+
+- (void)handleOpenTools {
+    GSLearningToolsViewController *tools = [[GSLearningToolsViewController alloc] initWithStyle:UITableViewStyleInsetGrouped];
+    [self.navigationController pushViewController:tools animated:YES];
 }
 
 - (void)handleOpenCheckIn {

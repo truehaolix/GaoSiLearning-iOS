@@ -539,4 +539,61 @@ static BOOL GSHandleUnauthorized(NSHTTPURLResponse *response) {
     }] resume];
 }
 
+- (void)fetchLearningToolsWithCompletion:(GSLearningToolsCompletion)completion {
+    NSString *base = [GSCacheManager sharedManager].backendHost;
+    NSURL *url = [NSURL URLWithString:[NSString stringWithFormat:@"%@/api/learning-tools", base]];
+    NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:url];
+    request.HTTPMethod = @"GET";
+    [[_session dataTaskWithRequest:request completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
+        NSHTTPURLResponse *http = (NSHTTPURLResponse *)response;
+        if (GSHandleUnauthorized(http)) {
+            GSCompleteOnMain(^{ completion(nil, @"登录会话已失效，请重新登录"); });
+            return;
+        }
+        if (error || http.statusCode < 200 || http.statusCode >= 300) {
+            GSCompleteOnMain(^{ completion(nil, GSAPIErrorMessage(data, http, error)); });
+            return;
+        }
+        NSDictionary *json = [NSJSONSerialization JSONObjectWithData:data ?: [NSData data] options:0 error:nil];
+        NSArray *tools = [json[@"tools"] isKindOfClass:[NSArray class]] ? json[@"tools"] : nil;
+        if (!tools) {
+            GSCompleteOnMain(^{ completion(nil, @"教学工具目录响应格式异常"); });
+            return;
+        }
+        GSCompleteOnMain(^{ completion(tools, nil); });
+    }] resume];
+}
+
+- (void)launchLearningToolWithId:(NSString *)toolId
+                      completion:(void(^)(NSURL * _Nullable url, NSString * _Nullable error))completion {
+    NSString *base = [GSCacheManager sharedManager].backendHost;
+    NSCharacterSet *allowed = [NSCharacterSet characterSetWithCharactersInString:@"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~"];
+    NSString *encoded = [toolId stringByAddingPercentEncodingWithAllowedCharacters:allowed];
+    NSURL *url = [NSURL URLWithString:[NSString stringWithFormat:@"%@/api/learning-tools/%@/launch", base, encoded ?: @""]];
+    NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:url];
+    request.HTTPMethod = @"POST";
+    [request setValue:@"application/json" forHTTPHeaderField:@"Content-Type"];
+    request.HTTPBody = [@"{}" dataUsingEncoding:NSUTF8StringEncoding];
+    [[_session dataTaskWithRequest:request completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
+        NSHTTPURLResponse *http = (NSHTTPURLResponse *)response;
+        if (GSHandleUnauthorized(http)) {
+            GSCompleteOnMain(^{ completion(nil, @"登录会话已失效，请重新登录"); });
+            return;
+        }
+        if (error || http.statusCode < 200 || http.statusCode >= 300) {
+            GSCompleteOnMain(^{ completion(nil, GSAPIErrorMessage(data, http, error)); });
+            return;
+        }
+        NSDictionary *json = [NSJSONSerialization JSONObjectWithData:data ?: [NSData data] options:0 error:nil];
+        NSString *launchURL = [json[@"launchUrl"] isKindOfClass:[NSString class]] ? json[@"launchUrl"] : nil;
+        NSURL *externalURL = launchURL.length > 0 ? [NSURL URLWithString:launchURL] : nil;
+        NSSet<NSString *> *allowedHosts = [NSSet setWithArray:@[@"jiaoshiai.com.cn", @"www.jiaoshiai.com.cn", @"wedulab.com", @"www.wedulab.com"]];
+        if (!externalURL || ![externalURL.scheme.lowercaseString isEqualToString:@"https"] || ![allowedHosts containsObject:externalURL.host.lowercaseString]) {
+            GSCompleteOnMain(^{ completion(nil, @"服务端返回了未获准的工具地址"); });
+            return;
+        }
+        GSCompleteOnMain(^{ completion(externalURL, nil); });
+    }] resume];
+}
+
 @end
