@@ -10,6 +10,96 @@
 #import "GSCaptureSession.h"
 #import "GSModels.h"
 #import "GSMathFormatUtil.h"
+#import <WebKit/WebKit.h>
+
+@interface GSLabWebViewController : UIViewController <WKNavigationDelegate>
+- (instancetype)initWithURL:(NSURL *)URL title:(NSString *)title;
+@end
+
+@implementation GSLabWebViewController {
+    NSURL *_URL;
+    WKWebView *_webView;
+    UIActivityIndicatorView *_spinner;
+}
+
+- (instancetype)initWithURL:(NSURL *)URL title:(NSString *)title {
+    self = [super initWithNibName:nil bundle:nil];
+    if (self) {
+        _URL = URL;
+        self.title = title.length > 0 ? title : @"站内虚拟实验";
+    }
+    return self;
+}
+
+- (void)viewDidLoad {
+    [super viewDidLoad];
+    self.view.backgroundColor = UIColor.systemBackgroundColor;
+    WKWebViewConfiguration *configuration = [[WKWebViewConfiguration alloc] init];
+    configuration.websiteDataStore = WKWebsiteDataStore.defaultDataStore;
+    configuration.preferences.javaScriptCanOpenWindowsAutomatically = NO;
+    _webView = [[WKWebView alloc] initWithFrame:CGRectZero configuration:configuration];
+    _webView.translatesAutoresizingMaskIntoConstraints = NO;
+    _webView.navigationDelegate = self;
+    _webView.allowsBackForwardNavigationGestures = NO;
+    [self.view addSubview:_webView];
+    [NSLayoutConstraint activateConstraints:@[
+        [_webView.topAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.topAnchor],
+        [_webView.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
+        [_webView.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
+        [_webView.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor],
+    ]];
+    _spinner = [[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleMedium];
+    [_spinner startAnimating];
+    self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc] initWithCustomView:_spinner];
+    [self loadAuthenticatedLab];
+}
+
+- (void)loadAuthenticatedLab {
+    NSArray<NSHTTPCookie *> *cookies = [NSHTTPCookieStorage.sharedHTTPCookieStorage cookiesForURL:_URL] ?: @[];
+    dispatch_group_t group = dispatch_group_create();
+    for (NSHTTPCookie *cookie in cookies) {
+        dispatch_group_enter(group);
+        [_webView.configuration.websiteDataStore.httpCookieStore setCookie:cookie completionHandler:^{ dispatch_group_leave(group); }];
+    }
+    dispatch_group_notify(group, dispatch_get_main_queue(), ^{
+        [self->_webView loadRequest:[NSURLRequest requestWithURL:self->_URL cachePolicy:NSURLRequestReloadRevalidatingCacheData timeoutInterval:60.0]];
+    });
+}
+
+- (void)webView:(WKWebView *)webView decidePolicyForNavigationAction:(WKNavigationAction *)navigationAction decisionHandler:(void (^)(WKNavigationActionPolicy))decisionHandler {
+    NSURL *target = navigationAction.request.URL;
+    BOOL sameOrigin = [target.scheme.lowercaseString isEqualToString:_URL.scheme.lowercaseString]
+        && [target.host.lowercaseString isEqualToString:_URL.host.lowercaseString]
+        && ((target.port == nil && _URL.port == nil) || [target.port isEqualToNumber:_URL.port]);
+    if (sameOrigin) {
+        decisionHandler(WKNavigationActionPolicyAllow);
+        return;
+    }
+    if ([target.scheme.lowercaseString isEqualToString:@"https"]) {
+        [UIApplication.sharedApplication openURL:target options:@{} completionHandler:nil];
+    }
+    decisionHandler(WKNavigationActionPolicyCancel);
+}
+
+- (void)webView:(WKWebView *)webView didFinishNavigation:(WKNavigation *)navigation {
+    [_spinner stopAnimating];
+    self.navigationItem.rightBarButtonItem = nil;
+}
+
+- (void)webView:(WKWebView *)webView didFailNavigation:(WKNavigation *)navigation withError:(NSError *)error {
+    [_spinner stopAnimating];
+    self.navigationItem.rightBarButtonItem = nil;
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"实验加载失败" message:@"请检查网络和登录状态后重试。" preferredStyle:UIAlertControllerStyleAlert];
+    [alert addAction:[UIAlertAction actionWithTitle:@"确定" style:UIAlertActionStyleDefault handler:nil]];
+    [self presentViewController:alert animated:YES completion:nil];
+}
+
+- (void)dealloc {
+    _webView.navigationDelegate = nil;
+    [_webView stopLoading];
+}
+
+@end
 
 @interface GSLearningToolsViewController : UITableViewController <UISearchResultsUpdating>
 @property (nonatomic, strong) NSArray<NSDictionary *> *tools;
@@ -34,6 +124,13 @@
     self.navigationItem.searchController = self.searchController;
     self.navigationItem.hidesSearchBarWhenScrolling = NO;
     self.definesPresentationContext = YES;
+    UILabel *notice = [[UILabel alloc] initWithFrame:CGRectMake(0, 0, 0, 58)];
+    notice.text = @"铜匠实验在应用内受认证打开；实验停留状态不计完成，需返回任务提交证据。";
+    notice.numberOfLines = 0;
+    notice.textAlignment = NSTextAlignmentCenter;
+    notice.textColor = UIColor.secondaryLabelColor;
+    notice.font = [UIFont systemFontOfSize:12];
+    self.tableView.tableHeaderView = notice;
     [self loadTools];
 }
 
@@ -62,7 +159,7 @@
             for (id value in @[tool[@"title"] ?: @"", tool[@"description"] ?: @"", tool[@"providerName"] ?: @""]) {
                 if ([value isKindOfClass:[NSString class]]) [parts addObject:value];
             }
-            for (NSString *key in @[@"subjects", @"gradeBands", @"knowledgePoints", @"scenarios"]) {
+            for (NSString *key in @[@"subjects", @"gradeBands", @"knowledgePoints", @"scenarios", @"searchTerms", @"steps", @"textbook"]) {
                 NSArray *values = [tool[key] isKindOfClass:[NSArray class]] ? tool[key] : @[];
                 for (id value in values) if ([value isKindOfClass:[NSString class]]) [parts addObject:value];
             }
@@ -95,6 +192,7 @@
     NSArray *subjects = [tool[@"subjects"] isKindOfClass:[NSArray class]] ? tool[@"subjects"] : @[];
     NSArray *grades = [tool[@"gradeBands"] isKindOfClass:[NSArray class]] ? tool[@"gradeBands"] : @[];
     NSString *provider = [tool[@"providerName"] isKindOfClass:[NSString class]] ? tool[@"providerName"] : @"外部工具";
+    if ([tool[@"launchMode"] isEqualToString:@"embedded_lab"]) provider = [provider stringByAppendingString:@" · 站内实验"];
     cell.detailTextLabel.text = [NSString stringWithFormat:@"%@ · %@\n%@", provider, [[subjects arrayByAddingObjectsFromArray:grades] componentsJoinedByString:@" · "], tool[@"description"] ?: @""];
     cell.detailTextLabel.numberOfLines = 3;
     cell.detailTextLabel.textColor = [UIColor secondaryLabelColor];
@@ -113,9 +211,14 @@
             [self showError:error ?: @"工具打开失败"];
             return;
         }
-        [UIApplication.sharedApplication openURL:url options:@{} completionHandler:^(BOOL success) {
-            if (!success) [self showError:@"没有可打开该网页的浏览器"];
-        }];
+        if ([tool[@"launchMode"] isEqualToString:@"embedded_lab"]) {
+            GSLabWebViewController *lab = [[GSLabWebViewController alloc] initWithURL:url title:tool[@"title"]];
+            [self.navigationController pushViewController:lab animated:YES];
+        } else {
+            [UIApplication.sharedApplication openURL:url options:@{} completionHandler:^(BOOL success) {
+                if (!success) [self showError:@"没有可打开该网页的浏览器"];
+            }];
+        }
     }];
 }
 

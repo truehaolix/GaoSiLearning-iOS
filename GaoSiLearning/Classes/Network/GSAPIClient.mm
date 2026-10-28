@@ -586,9 +586,18 @@ static BOOL GSHandleUnauthorized(NSHTTPURLResponse *response) {
         }
         NSDictionary *json = [NSJSONSerialization JSONObjectWithData:data ?: [NSData data] options:0 error:nil];
         NSString *launchURL = [json[@"launchUrl"] isKindOfClass:[NSString class]] ? json[@"launchUrl"] : nil;
-        NSURL *externalURL = launchURL.length > 0 ? [NSURL URLWithString:launchURL] : nil;
+        NSString *launchMode = [json[@"launchMode"] isKindOfClass:[NSString class]] ? json[@"launchMode"] : nil;
+        NSURL *baseURL = [NSURL URLWithString:base];
+        NSURL *externalURL = launchURL.length > 0 ? [[NSURL URLWithString:launchURL relativeToURL:baseURL] absoluteURL] : nil;
         NSSet<NSString *> *allowedHosts = [NSSet setWithArray:@[@"jiaoshiai.com.cn", @"www.jiaoshiai.com.cn", @"wedulab.com", @"www.wedulab.com"]];
-        if (!externalURL || ![externalURL.scheme.lowercaseString isEqualToString:@"https"] || ![allowedHosts containsObject:externalURL.host.lowercaseString]) {
+        BOOL embeddedAllowed = [launchMode isEqualToString:@"embedded_lab"]
+            && [externalURL.scheme.lowercaseString isEqualToString:baseURL.scheme.lowercaseString]
+            && [externalURL.host.lowercaseString isEqualToString:baseURL.host.lowercaseString]
+            && ((externalURL.port == nil && baseURL.port == nil) || [externalURL.port isEqualToNumber:baseURL.port]);
+        BOOL externalAllowed = [launchMode isEqualToString:@"external_browser"]
+            && [externalURL.scheme.lowercaseString isEqualToString:@"https"]
+            && [allowedHosts containsObject:externalURL.host.lowercaseString];
+        if (!externalURL || (!embeddedAllowed && !externalAllowed)) {
             GSCompleteOnMain(^{ completion(nil, @"服务端返回了未获准的工具地址"); });
             return;
         }
