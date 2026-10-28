@@ -17,6 +17,7 @@ static void GSCompleteOnMain(dispatch_block_t block) {
 }
 
 NSNotificationName const GSAuthenticationExpiredNotification = @"GSAuthenticationExpiredNotification";
+static NSString * const GSSupportedContractFamily = @"gaosi-mobile-v1";
 
 static BOOL GSHandleUnauthorized(NSHTTPURLResponse *response) {
     if (response.statusCode != 401) return NO;
@@ -29,6 +30,28 @@ static BOOL GSHandleUnauthorized(NSHTTPURLResponse *response) {
 
 @implementation GSAPIClient {
     NSURLSession *_session;
+}
+
++ (BOOL)isSupportedMobileContract:(NSDictionary *)contract {
+    if (![contract isKindOfClass:[NSDictionary class]]) return NO;
+    id familyValue = contract[@"contractFamily"];
+    if (familyValue && ![familyValue isKindOfClass:[NSString class]]) return NO;
+    if ([familyValue isKindOfClass:[NSString class]] && ![(NSString *)familyValue isEqualToString:GSSupportedContractFamily]) {
+        return NO;
+    }
+
+    NSMutableDictionary *trace = [NSMutableDictionary dictionary];
+    id version = contract[@"contractVersion"];
+    if ([version isKindOfClass:[NSString class]]) trace[@"contractVersion"] = version;
+    NSDictionary *release = [contract[@"release"] isKindOfClass:[NSDictionary class]] ? contract[@"release"] : nil;
+    for (NSString *key in @[@"id", @"commit", @"builtAt"]) {
+        id value = release[key];
+        if ([value isKindOfClass:[NSString class]]) trace[key] = value;
+    }
+    if (trace.count > 0) {
+        [[NSUserDefaults standardUserDefaults] setObject:[trace copy] forKey:@"gs_last_mobile_contract"];
+    }
+    return YES;
 }
 
 + (instancetype)sharedClient {
@@ -497,6 +520,10 @@ static BOOL GSHandleUnauthorized(NSHTTPURLResponse *response) {
         }
         id parsed = [NSJSONSerialization JSONObjectWithData:data ?: [NSData data] options:0 error:nil];
         NSDictionary *contract = [parsed isKindOfClass:[NSDictionary class]] ? parsed : nil;
+        if (![GSAPIClient isSupportedMobileContract:contract]) {
+            GSCompleteOnMain(^{ completion(nil, @"服务端移动契约不兼容，请升级客户端"); });
+            return;
+        }
         NSDictionary *capabilities = [contract[@"capabilities"] isKindOfClass:[NSDictionary class]] ? contract[@"capabilities"] : nil;
         NSDictionary *capability = [capabilities[@"similarQuestions"] isKindOfClass:[NSDictionary class]]
             ? capabilities[@"similarQuestions"] : nil;

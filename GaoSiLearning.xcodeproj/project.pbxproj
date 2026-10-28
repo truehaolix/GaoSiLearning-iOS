@@ -357,6 +357,10 @@
 		KK0100012C00000100000001 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				GAOSI_API_BASE_URL = "http://112.46.82.154:4174";
+				GAOSI_BUILD_TIME = local;
+				GAOSI_GIT_COMMIT = local;
+				GAOSI_REQUIRE_HTTPS = false;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
@@ -382,6 +386,10 @@
 		KK0100012C00000100000002 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				GAOSI_API_BASE_URL = "http://112.46.82.154:4174";
+				GAOSI_BUILD_TIME = unversioned;
+				GAOSI_GIT_COMMIT = unversioned;
+				GAOSI_REQUIRE_HTTPS = false;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;

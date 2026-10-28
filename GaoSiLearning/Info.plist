@@ -20,6 +20,14 @@
     <string>1.0.0</string>
     <key>CFBundleVersion</key>
     <string>1</string>
+    <key>GSAPIBaseURL</key>
+    <string>$(GAOSI_API_BASE_URL)</string>
+    <key>GSRequireHTTPS</key>
+    <string>$(GAOSI_REQUIRE_HTTPS)</string>
+    <key>GSBuildCommit</key>
+    <string>$(GAOSI_GIT_COMMIT)</string>
+    <key>GSBuildTime</key>
+    <string>$(GAOSI_BUILD_TIME)</string>
     <key>LSRequiresIPhoneOS</key>
     <true/>
     <key>NSCameraUsageDescription</key>

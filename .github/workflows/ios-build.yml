@@ -8,6 +8,9 @@ on:
 jobs:
   build-ipa:
     runs-on: macos-14
+    env:
+      GAOSI_API_BASE_URL: ${{ vars.GAOSI_API_BASE_URL || 'http://112.46.82.154:4174' }}
+      GAOSI_REQUIRE_HTTPS: ${{ vars.GAOSI_REQUIRE_HTTPS || 'false' }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -17,12 +20,21 @@ jobs:
 
       - name: Build Archive
         run: |
+          if [[ "$GAOSI_REQUIRE_HTTPS" == "true" && "$GAOSI_API_BASE_URL" != https://* ]]; then
+            echo "GAOSI_REQUIRE_HTTPS=true requires an https:// GAOSI_API_BASE_URL" >&2
+            exit 1
+          fi
+          BUILD_TIME="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           mkdir -p build
           xcodebuild -project GaoSiLearning.xcodeproj \
                      -scheme GaoSiLearning \
                      -configuration Release \
                      -sdk iphoneos \
                      -archivePath $PWD/build/GaoSiLearning.xcarchive \
+                     GAOSI_API_BASE_URL="$GAOSI_API_BASE_URL" \
+                     GAOSI_REQUIRE_HTTPS="$GAOSI_REQUIRE_HTTPS" \
+                     GAOSI_GIT_COMMIT="$GITHUB_SHA" \
+                     GAOSI_BUILD_TIME="$BUILD_TIME" \
                      CODE_SIGN_IDENTITY="" \
                      CODE_SIGNING_REQUIRED=NO \
                      CODE_SIGNING_ALLOWED=NO \
@@ -40,5 +52,5 @@ jobs:
       - name: Upload IPA Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: GaoSiLearning-iOS-IPA
+          name: GaoSiLearning-iOS-IPA-${{ github.sha }}
           path: build/GaoSiLearning.ipa

@@ -47,6 +47,10 @@ static NSDictionary *GSDictionaryValue(id value) {
             ? [NSJSONSerialization JSONObjectWithData:data ?: [NSData data] options:0 error:nil]
             : nil;
         NSDictionary *contract = GSDictionaryValue(root);
+        if (![GSAPIClient isSupportedMobileContract:contract]) {
+            [self runLocalAppleVisionOcr:image completion:completion];
+            return;
+        }
         NSDictionary *capabilities = GSDictionaryValue(contract[@"capabilities"]);
         NSDictionary *ocrQuestion = GSDictionaryValue(capabilities[@"ocrQuestion"]);
         NSString *value = ocrQuestion[@"status"];

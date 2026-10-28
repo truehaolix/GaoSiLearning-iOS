@@ -4,6 +4,39 @@ static NSString * const kKeyBackendHost = @"gs_backend_host";
 static NSString * const kKeyUserArchive = @"gs_current_user_archive";
 static NSString * const kDefaultBackend = @"http://112.46.82.154:4174";
 
+static BOOL GSBooleanBundleValue(NSString *key) {
+    id value = [[NSBundle mainBundle] objectForInfoDictionaryKey:key];
+    if ([value isKindOfClass:[NSNumber class]]) return [value boolValue];
+    if (![value isKindOfClass:[NSString class]]) return NO;
+    NSString *normalized = [(NSString *)value lowercaseString];
+    return [@[@"1", @"yes", @"true"] containsObject:normalized];
+}
+
+static NSString *GSValidatedBackend(NSString *candidate, BOOL requireHTTPS) {
+    NSString *trimmed = [candidate stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+    NSURLComponents *components = trimmed.length > 0 ? [NSURLComponents componentsWithString:trimmed] : nil;
+    NSString *scheme = components.scheme.lowercaseString;
+    BOOL schemeAllowed = [scheme isEqualToString:@"https"] || (!requireHTTPS && [scheme isEqualToString:@"http"]);
+    BOOL cleanRoot = components.host.length > 0
+        && components.user.length == 0
+        && components.password.length == 0
+        && components.query.length == 0
+        && components.fragment.length == 0
+        && (components.path.length == 0 || [components.path isEqualToString:@"/"]);
+    if (!schemeAllowed || !cleanRoot) return nil;
+    components.path = @"";
+    return components.URL.absoluteString;
+}
+
+static NSString *GSConfiguredBackend(void) {
+    BOOL requireHTTPS = GSBooleanBundleValue(@"GSRequireHTTPS");
+    NSString *configured = [[NSBundle mainBundle] objectForInfoDictionaryKey:@"GSAPIBaseURL"];
+    NSString *validated = [configured isKindOfClass:[NSString class]]
+        ? GSValidatedBackend(configured, requireHTTPS)
+        : nil;
+    return validated ?: GSValidatedBackend(kDefaultBackend, requireHTTPS) ?: @"";
+}
+
 @implementation GSCacheManager {
     NSString *_documentsPath;
     NSString *_imagesDirPath;
@@ -35,7 +68,9 @@ static NSString * const kDefaultBackend = @"http://112.46.82.154:4174";
         }
 
         NSUserDefaults *ud = [NSUserDefaults standardUserDefaults];
-        _backendHost = [ud stringForKey:kKeyBackendHost] ?: kDefaultBackend;
+        NSString *storedBackend = [ud stringForKey:kKeyBackendHost];
+        BOOL requireHTTPS = GSBooleanBundleValue(@"GSRequireHTTPS");
+        _backendHost = GSValidatedBackend(storedBackend, requireHTTPS) ?: GSConfiguredBackend();
 
         NSData *userData = [ud objectForKey:kKeyUserArchive];
         if (userData) {
@@ -47,7 +82,9 @@ static NSString * const kDefaultBackend = @"http://112.46.82.154:4174";
 }
 
 - (void)setBackendHost:(NSString *)backendHost {
-    _backendHost = [backendHost copy];
+    NSString *validated = GSValidatedBackend(backendHost, GSBooleanBundleValue(@"GSRequireHTTPS"));
+    if (!validated) return;
+    _backendHost = [validated copy];
     [[NSUserDefaults standardUserDefaults] setObject:_backendHost forKey:kKeyBackendHost];
     [[NSUserDefaults standardUserDefaults] synchronize];
 }

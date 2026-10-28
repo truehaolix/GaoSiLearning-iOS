@@ -14,6 +14,9 @@ FOUNDATION_EXPORT NSNotificationName const GSAuthenticationExpiredNotification;
 
 + (instancetype)sharedClient;
 
+/// 校验并记录服务端移动契约。缺少契约族的旧服务按兼容模式处理；显式不匹配时失败关闭。
++ (BOOL)isSupportedMobileContract:(NSDictionary *)contract;
+
 /// 登录认证接口
 - (void)loginWithUsername:(NSString *)username
                  password:(NSString *)password
